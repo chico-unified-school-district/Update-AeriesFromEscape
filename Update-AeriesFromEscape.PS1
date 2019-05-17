@@ -5,11 +5,11 @@ Add Relevant Employees to Aeries from Escape
 This Script Queries the Escape database for Employees that fit the criteria ('CUTA','CUMA',or 'CSEA' members) for Aeries access
 and adds them to the Aeries UNG table in the format: Domain\Username
 .EXAMPLE
-Update-AeriesFromEscape.PS1 
+Update-AeriesFromEscape.PS1 -DC $dc -ADCred $adCred -SISServer SISServer -SISData SISDB -SISCred $SISCred `
+ -EscapeServer EscServer -EscapeData EscDB -EscapeCred $EscapeCred
 .EXAMPLE
-Update-AeriesFromEscape.PS1
-.EXAMPLE
-Update-AeriesFromEscape.PS1
+Update-AeriesFromEscape.PS1 -DC $dc -ADCred $adCred -SISServer SISServer -SISData SISDB -SISCred $SISCred `
+ -EscapeServer EscServer -EscapeData EscDB -EscapeCred $EscapeCred -WhatIf -Verbose
 .INPUTS
 .OUTPUTS
 .NOTES
@@ -95,19 +95,19 @@ $ADEmployeeAccounts = Get-ADUser @employeeParams
 
 foreach ($emp in $EscapeResults) {
  # Begin Process Escape Results
-	Write-Verbose ("=== Started processing for: {0} | {1} {2} ===" -f $emp.empid, $emp.namefirst, $emp.namelast)
+	Write-Verbose ("=== Started processing for: {0} | {1} {2} ===" -f $emp.empId, $emp.namefirst, $emp.namelast)
  Write-Debug "Process?"
-	$empId = $emp.empid
+	$empId = $emp.empId
 	$user = $ADEmployeeAccounts.Where( { $_.employeeID -eq $empId })
 	if (!$user) {
   Write-Verbose "$empId,User not found in AD" 
  }
  else {
   # Begin AD User Exists
-		# EmpID match found - Checking UGN
+		# empId match found - Checking UGN
 		# Setting Variables
 		$EM = $user.mail
-		$SID = $empID
+		$SID = $empId
 		$UN = $user.samAccountName
 		$SY = 'AERIES.NET'
   $TY = 1
@@ -123,7 +123,7 @@ foreach ($emp in $EscapeResults) {
    ( $AeriesResults.UN -notcontains $UN ) -and 
    ( $AeriesResults.EM -notcontains $EM ) ) {
    # Begin INSERT User in UGN Table
-   Write-Verbose "$FN $LN $empID not in UGN Table."
+   Write-Verbose "$FN $LN $empId not in UGN Table."
 			# Add UN (Username) to UGN
 			$UGNInsert = @"
 			INSERT INTO $sisDb.dbo.UGN([UID], UN, SY, TY, UTY, HT, CD, EM, FN, LN, CDT, SID, PLC)
@@ -131,35 +131,35 @@ foreach ($emp in $EscapeResults) {
 			`'$EM`',`'$FN`',`'$LN`',GETDATE(),$SID,GETDATE())
 "@ # Indentation causes error
 
-   Add-Log update "Adding '$EM' '$empID' to $sisDb\UGN TABLE"
-   Invoke-SQLCOmmand @SISDatabaseHash -Query $UGNInsert -WhatIf:$WhatIf
+   Add-Log insert ('{0},{1},{2}' -f $EM, $empId, "[$SISDatabase].[UGN]")  -WhatIf:$WhatIf
+   Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $UGNInsert -WhatIf:$WhatIf
   } # End INSERT User in UGN Table
 
   if ( ($bargUnitId -eq 'CUTA') -or
    ($bargUnitId -eq 'CUMA') -or
    ($bargUnitId -eq 'CSEA') ) {
    # BEGIN INSERT/UPDATE User STF Table data
-   $STFIUserCheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT EM,U8 FROM STF WHERE ID = $empID"
+   $STFIUserCheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT EM,U8 FROM STF WHERE ID = $empId"
    if (!$STFIUserCheck) {
     # Begin INSERT New STF Entry
-    $STFInsertUser = "INSERT INTO STF (ID,FN,LN,EM,U8) VALUES (`'$empID`',`'$FN`',`'$LN`',`'$EM`',`'$U8`')"
-    Add-Log insert "$STFInsertUser"
+    $STFInsertUser = "INSERT INTO STF (ID,FN,LN,EM,U8) VALUES (`'$empId`',`'$FN`',`'$LN`',`'$EM`',`'$U8`')"
+    Add-Log insert "$EM,$empId,$FN,$LN,$U8,[$SISDatabase].[UGN]" -WhatIf:$WhatIf
     Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $STFInsertUser -WhatIf:$WhatIf
    } # END INSERT New STF Entry
 
    if ( $STFIUserCheck.em -ne $user.mail ) {
     # Begin CHECK/UPDATE EMAIL
-    Write-Verbose "STF.EM ($($STFIUserCheck.em)) not equal for $EM $empID"
-    $STFEMUpdate = "UPDATE STF SET STF.EM = `'$($user.mail)`' WHERE STF.ID = $empID"
-    Add-Log update "$STFEMUpdate"
+    Write-Verbose "STF.EM ($($STFIUserCheck.em)) not equal for $EM $empId"
+    $STFEMUpdate = "UPDATE STF SET STF.EM = `'$($user.mail)`' WHERE STF.ID = $empId"
+    Add-Log update ('{0},{1},{2}' -f $user.mail, $empId, "[$SISDatabase].[STF].[EM]") -WhatIf:$WhatIf
     Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $STFEMUpdate -WhatIf:$WhatIf
    } # End CHECK/UPDATE EMAIL
 
    if ( $STFIUserCheck.u8 -ne $emp.u8 ) {
     # Begin CHECK/UPDATE U8
-    Write-Verbose "Aeries STF.u8 ($($STFIUserCheck.u8)) not equal to Escape: $U8 for $empID"
-    $STFU8Update = "UPDATE STF SET STF.U8 = `'$U8`' WHERE STF.ID = $empID"
-    Add-Log update "$STFU8Update"
+    Write-Verbose "Aeries STF.u8 ($($STFIUserCheck.u8)) not equal to Escape: $U8 for $empId"
+    $STFU8Update = "UPDATE STF SET STF.U8 = `'$U8`' WHERE STF.ID = $empId"
+    Add-Log update "$empId,$U8,[$SISDatabase].[STF].[U8]" -WhatIf:$WhatIf
     Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $STFU8Update -WhatIf:$WhatIf
    } # End CHECK/UPDATE U8
 
@@ -168,7 +168,7 @@ foreach ($emp in $EscapeResults) {
   } # END INSERT/UPDATE User STF Table data
   # ======================================================================
  } # End AD User Exists
- Write-Verbose ("=== Completed processing for: {0} | {1} {2} ===" -f $emp.empid, $emp.namefirst, $emp.namelast)
+ Write-Verbose ("=== Completed processing for: {0} | {1} {2} ===" -f $emp.empId, $emp.namefirst, $emp.namelast)
 } # End Process Escape Results
 
 Add-Log script "Tearing down PS Sessions..."
