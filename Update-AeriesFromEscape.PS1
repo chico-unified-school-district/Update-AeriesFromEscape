@@ -29,20 +29,26 @@ param (
  [Parameter(Mandatory = $True)]
  [Alias('ADCred')]
  [System.Management.Automation.PSCredential]$ADCredential,
- # SIS Hashtable with 'server', 'user', and 'password' elements
- [Parameter(Mandatory = $False)]
- [Alias('sisHash')]
- [hashtable]$SISDatabaseHash,
- # Escape Hashtable with 'server', 'database', 'user', and 'password' elements
- [Parameter(Mandatory = $False)]
- [Alias('escHash')]
- [hashtable]$EscapeDatabaseHash,
+ # Student Information Server
+ [Parameter(Mandatory = $true)]
+ [string]$SISServer,
+ [Parameter(Mandatory = $true)]
+ [string]$SISDatabase,
+ [Parameter(Mandatory = $true)]
+ [System.Management.Automation.PSCredential]$SISCredential,
+ # Escape Employee Server
+ [Parameter(Mandatory = $true)]
+ [string]$EscapeServer,
+ [Parameter(Mandatory = $true)]
+ [string]$EscapeDatabase,
+ [Parameter(Mandatory = $true)]
+ [System.Management.Automation.PSCredential]$EscapeCredential,
 	# Sandbox Database
 	[switch]$Sandbox,
 	# Run a Whatif on commands - no data will be changed
 	[switch]$WhatIf
 )
-
+ 
 Clear-Host ; $error.clear() # Clear screen and error log.
 Get-PSSession | Remove-PSSession -WhatIf:$false
 
@@ -58,7 +64,6 @@ Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmd
 . '.\lib\Run-SQLCmd.PS1'
 
 # Use the sandbox db for testing purposes
-if ($Sandbox) { $sisDb = 'DST18000SANDBOX' } else { $sisDb = 'DST18000CUSD' }
 $SISDatabaseHash.Database = $sisDb
 $AeriesResults = Run-SQLCmd @SISDatabaseHash -Query 'SELECT * FROM UGN'
 
