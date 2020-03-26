@@ -87,7 +87,7 @@ $employeeParams = @{
   (mail -like "*@chicousd.org") -and
   (department -ne 380)
  }
- Properties = 'mail', 'employeeID', 'extensionAttribute1'
+ Properties = 'mail', 'homepage','employeeID', 'extensionAttribute1'
  SearchBase = 'OU=Employees,OU=Users,OU=Domain_Root,DC=chico,DC=usd'
 }
 Add-Log info ('{0},Getting Active Directory staff objects' -f $DomainController)
@@ -106,7 +106,8 @@ foreach ($emp in $EscapeResults) {
   # Begin AD User Exists
 		# empId match found - Checking UGN
 		# Setting Variables
-		$EM = $user.mail
+  $EM = $user.mail
+  $GEM = $user.homepage
 		$SID = $empId
 		$UN = $user.samAccountName
 		$SY = 'AERIES.NET'
@@ -164,8 +165,13 @@ foreach ($emp in $EscapeResults) {
    } # End CHECK/UPDATE U8
 
    # INSERT/UPDATE UGN.UID
-
   } # END INSERT/UPDATE User STF Table data
+  # INSERT/UPDATE SSO.GEM
+  $ssoGemcheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT GEM FROM SSO WHERE GEM = `'$GEM`'"
+  if ($ssoGemCheck) { Add-Log info ('SSO.GEM: {0} gsuite address already present.' -f $GEM) }
+  else{
+   $ssoGemUpdate = UPDATE 
+  }
   # ======================================================================
  } # End AD User Exists
  Write-Verbose ("=== Completed processing for: {0} | {1} {2} ===" -f $emp.empId, $emp.namefirst, $emp.namelast)
