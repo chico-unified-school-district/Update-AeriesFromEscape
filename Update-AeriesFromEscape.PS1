@@ -127,7 +127,7 @@ foreach ($emp in $EscapeResults) {
    Write-Verbose "$FN $LN $empId not in UGN Table."
 			# Add UN (Username) to UGN
 			$UGNInsert = @"
-			INSERT INTO $sisDb.dbo.UGN([UID], UN, SY, TY, UTY, HT, CD, EM, FN, LN, CDT, SID, PLC)
+			INSERT INTO UGN ([UID], UN, SY, TY, UTY, HT, CD, EM, FN, LN, CDT, SID, PLC)
 			VALUES  ((SELECT MAX([UID]) + 1 FROM UGN),`'$UN`',`'$SY`',$TY,`'$UTY`',$HT,GETDATE(),
 			`'$EM`',`'$FN`',`'$LN`',GETDATE(),$SID,GETDATE())
 "@ # Indentation causes error
@@ -168,9 +168,16 @@ foreach ($emp in $EscapeResults) {
   } # END INSERT/UPDATE User STF Table data
   # INSERT/UPDATE SSO.GEM
   $ssoGemcheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT GEM FROM SSO WHERE GEM = `'$GEM`'"
-  if ($ssoGemCheck) { Add-Log info ('SSO.GEM: {0} gsuite address already present.' -f $GEM) }
+  if ($ssoGemCheck) { Add-Log info ('SSO.GEM: {0} GSuite address already present.' -f $GEM) }
   else{
-   $ssoGemUpdate = UPDATE 
+   Add-Log update ('SSO.GEM {0}' -f $GEM)
+   $userUgnUid = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT UID FROM UGN WHERE UN = `'$UN`' AND UTY = 'teacher'" | Select-Object -First 1
+   if ($userUgnUid){
+    $ssoGemInsert = "INSERT INTO SSO (UID, AK, EID, SCU, GEM) VALUES ($userUgnUid,,0,,`'$GEM`')"
+    Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $ssoGemInsert -WhatIf:$WhatIf
+   } else {
+    Add-Log warning ('{0} UID not found' -f $UN)
+   }
   }
   # ======================================================================
  } # End AD User Exists
