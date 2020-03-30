@@ -22,5 +22,5 @@ SELECT
    HREmployment.PersonTypeId IN (1,2,4)
    AND vwHREmploymentList.BargUnitId IN ('CUTA','CUMA','CSEA','CHRT')
    AND HREmployment.EmploymentStatusCode IN ('A','I','L','W')
-   --AND HREmployment.DateTimeEdited > DATEADD(day,-7,getdate())
+   AND HREmployment.DateTimeEdited > DATEADD(day,-20,getdate())
   ORDER BY vwHREmploymentList.empID DESC

@@ -96,7 +96,7 @@ $ADEmployeeAccounts = Get-ADUser @employeeParams
 foreach ($emp in $EscapeResults) {
  # Begin Process Escape Results
 	Write-Verbose ("=== Started processing for: {0} | {1} {2} ===" -f $emp.empId, $emp.namefirst, $emp.namelast)
- Write-Debug "Process?"
+ # Write-Debug ('======== Process {0} =========' -f $emp.employeeID)
 	$empId = $emp.empId
 	$user = $ADEmployeeAccounts.Where( { $_.employeeID -eq $empId })
 	if (!$user) {
@@ -167,18 +167,22 @@ foreach ($emp in $EscapeResults) {
    # INSERT/UPDATE UGN.UID
   } # END INSERT/UPDATE User STF Table data
   # INSERT/UPDATE SSO.GEM
-  $ssoGemcheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT GEM FROM SSO WHERE GEM = `'$GEM`'"
-  if ($ssoGemCheck) { Add-Log info ('SSO.GEM: {0} GSuite address already present.' -f $GEM) }
-  else{
-   Add-Log update ('SSO.GEM {0}' -f $GEM)
-   $userUgnUid = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT UID FROM UGN WHERE UN = `'$UN`' AND UTY = 'teacher'" | Select-Object -First 1
-   if ($userUgnUid){
-    $ssoGemInsert = "INSERT INTO SSO (UID, AK, EID, SCU, GEM) VALUES ($userUgnUid,,0,,`'$GEM`')"
-    Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $ssoGemInsert -WhatIf:$WhatIf
-   } else {
-    Add-Log warning ('{0} UID not found' -f $UN)
-   }
-  }
+  if ($GEM -like "*@chicousd.net"){
+   $ssoGemcheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT GEM FROM SSO WHERE GEM = `'$GEM`'"
+   if ($ssoGemCheck) { Add-Log info ('SSO.GEM: {0} GSuite address already present.' -f $GEM) }
+   else{
+    $userUgnUid = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT UID FROM UGN WHERE UN = `'$UN`' AND UTY = 'teacher'" | Select-Object -First 1
+    if ($userUgnUid){
+     Write-Debug 'process sso.gem?'
+     Add-Log insert ('SSO.GEM {0}' -f $GEM)
+     $ssoGemInsert = "INSERT INTO SSO (UID, AK, EID, SCU, GEM) VALUES ($userUgnUid,,0,,`'$GEM`')"
+     $ssoGemInsert
+     Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $ssoGemInsert -WhatIf:$WhatIf
+    } else {
+     # Add-Log warning ('{0} UID not found' -f $UN)
+    }
+   } # END SSO.GEM check
+  } # END GEM address exists
   # ======================================================================
  } # End AD User Exists
  Write-Verbose ("=== Completed processing for: {0} | {1} {2} ===" -f $emp.empId, $emp.namefirst, $emp.namelast)
