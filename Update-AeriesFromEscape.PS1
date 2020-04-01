@@ -45,7 +45,8 @@ param (
  [string]$EscapeDatabase,
  [Parameter(Mandatory = $true)]
  [System.Management.Automation.PSCredential]$EscapeCredential,
-	# Run a Whatif on commands - no data will be changed
+ # Run a Whatif on commands - no data will be changed
+ [Alias('wi')]
 	[switch]$WhatIf
 )
  
@@ -77,7 +78,7 @@ $EscapeDatabaseHash = @{
  Credential = $EscapeCredential
  Query      = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
 }
-Add-Log info ('{0},{1},Querying employee database' -f $EscapeServer, $EscapeDatabase)
+Add-Log info ('Querying employee database {0}\{1}' -f $EscapeServer, $EscapeDatabase)
 $EscapeResults = Invoke-SQLCOmmand @EscapeDatabaseHash
 
 # Active Directory Employee Objects
@@ -95,8 +96,8 @@ $ADEmployeeAccounts = Get-ADUser @employeeParams
 
 foreach ($emp in $EscapeResults) {
  # Begin Process Escape Results
-	Write-Verbose ("=== Started processing for: {0} | {1} {2} ===" -f $emp.empId, $emp.namefirst, $emp.namelast)
- # Write-Debug ('======== Process {0} =========' -f $emp.employeeID)
+	Write-Verbose ("++=== Started processing for: {0} | {1} {2} ===++" -f $emp.empId, $emp.namefirst, $emp.namelast)
+ Write-Debug ('======== Process {0} =========' -f $emp.empID)
 	$empId = $emp.empId
 	$user = $ADEmployeeAccounts.Where( { $_.employeeID -eq $empId })
 	if (!$user) {
@@ -105,7 +106,10 @@ foreach ($emp in $EscapeResults) {
  else {
   # Begin AD User Exists
 		# empId match found - Checking UGN
-		# Setting Variables
+  # Setting Variables
+  if ($user.count -gt 1) {
+   Add-Log warning ('EmployeeID {0} count > 1' -f $user[0].employeeID)
+  }
   $EM = $user.mail
   $GEM = $user.homepage
 		$SID = $empId
@@ -166,26 +170,43 @@ foreach ($emp in $EscapeResults) {
 
    # INSERT/UPDATE UGN.UID
   } # END INSERT/UPDATE User STF Table data
-  # INSERT/UPDATE SSO.GEM
-  if ($GEM -like "*@chicousd.net"){
-   $ssoGemcheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT GEM FROM SSO WHERE GEM = `'$GEM`'"
-   if ($ssoGemCheck) { Add-Log info ('SSO.GEM: {0} GSuite address already present.' -f $GEM) }
-   else{
-    $userUgnUid = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT UID FROM UGN WHERE UN = `'$UN`' AND UTY = 'teacher'" | Select-Object -First 1
-    if ($userUgnUid){
-     Write-Debug 'process sso.gem?'
-     Add-Log insert ('SSO.GEM {0}' -f $GEM)
-     $ssoGemInsert = "INSERT INTO SSO (UID, AK, EID, SCU, GEM) VALUES ($userUgnUid,,0,,`'$GEM`')"
-     $ssoGemInsert
-     Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $ssoGemInsert -WhatIf:$WhatIf
-    } else {
-     # Add-Log warning ('{0} UID not found' -f $UN)
+  # ======================================================================
+  # INSERT/UPDATE SSO TABLE - SSO.GEM
+  $uidSql = "SELECT UID FROM UGN WHERE UN = `'$UN`'"
+  $UID=  (Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $uidSql | Select-Object -First 1).UID
+  if ($UID -notmatch "\d{4,}"){
+   Add-Log warning ('{0} UID not in correct format for {1} in UGN Table {2}\{3}' -f $UID, $UN, $SISServer, $SISDatabase)
+  }
+  else {
+
+  }
+  # $userUgnUid = ( $AeriesResults.Where({$_.UN -eq $UN}) ).UID | Select-Object -First 1
+  $ssoUIDCheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT UID FROM SSO WHERE UID = $UID"
+  if ($ssoUIDCheck){ # BEGIN SSO UID CHECK
+   Write-Verbose ('{0} for {1} already present in SSO' -f $UID, $UN) 
+  }
+  else {
+   # Read-Host 'UID Wait'
+   if ($GEM -like "*@chicousd.net"){
+    $ssoGemcheck = Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand "SELECT GEM FROM SSO WHERE GEM = `'$GEM`'"
+    if ($ssoGemCheck) { 
+     Write-Verbose ('SSO.GEM: {0} GSuite address already present.' -f $GEM)
     }
-   } # END SSO.GEM check
-  } # END GEM address exists
+    else{
+      Write-Debug 'process sso.gem?'
+      Add-Log insert ('SSO.GEM {0} for SSO.UID {1}' -f $GEM, $UID)
+      $ssoGemInsert = "INSERT INTO SSO(UID, AK, EID, SCU, GEM) VALUES ($UID,`'`',0,`'`',`'$GEM`')"
+      # $ssoGemInsert
+      Invoke-SQLCOmmand @SISDatabaseHash -SqlCommand $ssoGemInsert -WhatIf:$WhatIf
+    } # END SSO.GEM check
+   }
+   else {
+    Add-Log warning ('GSuite address {0} not vaild for {1}' -f $GEM,$user.samAccountName)
+   }# END GEM address exists
+  } # END SSO UID CHECK
   # ======================================================================
  } # End AD User Exists
- Write-Verbose ("=== Completed processing for: {0} | {1} {2} ===" -f $emp.empId, $emp.namefirst, $emp.namelast)
+ Write-Verbose ("||== Completed processing for: {0} | {1} {2} ==||" -f $emp.empId, $emp.namefirst, $emp.namelast)
 } # End Process Escape Results
 
 Add-Log script "Tearing down PS Sessions..."

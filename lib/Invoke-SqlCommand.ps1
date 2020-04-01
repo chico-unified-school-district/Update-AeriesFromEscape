@@ -13,8 +13,8 @@ function Invoke-SqlCommand {
   [string]$SqlCommand,
   [switch]$WhatIf
 	)
-	Write-Verbose "Running $($MyInvocation.MyCommand.Name)"
- Write-Verbose "Running SQL Command against $Connection as $user"
+	# Write-Verbose "Running $($MyInvocation.MyCommand.Name)"
+ Write-Verbose "Running SQL Command against $Server\$Database as $($Credential.UserName)"
 	if (!$WhatIf) { Write-Verbose ($SqlCommand | Out-String) }
  
  function openSqlConn {
@@ -33,7 +33,7 @@ function Invoke-SqlCommand {
  $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($password)
  $unsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
 
- if ($WhatIf) { $SqlCommand }
+ if ($WhatIf) { "[WhatIf],"+$SqlCommand }
  else {
   $ServerInstance = "$Server "; $Database = "$DataBase"; $ConnectionTimeout = 60; $QueryTimeout = 120
   $conn = new-object System.Data.SqlClient.SQLConnection
