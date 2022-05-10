@@ -1,4 +1,4 @@
-SELECT 
+SELECT
    vwHREmploymentList.empID,
    vwHREmploymentList.EmailWork,
    vwHREmploymentList.NameLast,
@@ -11,13 +11,13 @@ SELECT
    vwHREmploymentList.homeAddrZip AS ZC,
    vwHREmploymentList.homePhone AS TL,
    vwHREmploymentList.homePhoneMobile AS CP,
-   CASE 
+   CASE
  WHEN vwHREmploymentList.BargUnitId = 'CSEA' THEN 'C'
  WHEN vwHREmploymentList.BargUnitId = 'CUTA' THEN 'T'
  WHEN vwHREmploymentList.BargUnitId = 'CUMA' THEN 'A'
-   ELSE NULL END AS U8 -- Aeries User defined field 8 - Tag Identification of Job Category 
-  FROM vwHREmploymentList
-   LEFT JOIN HREmployment ON HREmployment.EmpID = vwHREmploymentList.EmpID
+   ELSE NULL END AS U8 -- Aeries User defined field 8 - Tag Identification of Job Category
+  FROM vwHREmploymentList as HREvw
+   LEFT JOIN HREmployment as HRE ON HREmployment.EmpID = vwHREmploymentList.EmpID
   WHERE
    HREmployment.PersonTypeId IN (1,2,4)
    AND vwHREmploymentList.BargUnitId IN ('CUTA','CUMA','CSEA','CHRT')

@@ -5,3 +5,5 @@ logs
 desktop.ini
 .vscode/
 .vscode/*
+/notes.ps1
+/jenkins.ps1
