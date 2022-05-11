@@ -48,6 +48,9 @@ param (
  [Parameter(Mandatory = $true)]
  [System.Management.Automation.PSCredential]$EscapeCredential,
  # Run a 'Whatif' on commands - no data will be changed
+ [switch]$InsertUGN,
+ [switch]$InsertSTF,
+ [switch]$InsertSSO,
  [Alias('wi')]
 	[switch]$WhatIf
 )
@@ -57,15 +60,36 @@ $infoClr = 'Green'
 $actionClr = 'Yellow'
 $alertClr = 'Red'
 # ============================================
-function Complete-Processing {
+function Add-UGNEntry {
+ begin {}
  process {
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.SID, $_.EM) -Fore $infoClr
+  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
+  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertUGN -split '\n')[0]))
+  Update-SIS $_.sqlInsertUGN
+  $_
+ }
+}
+function Complete-Processing {
+ begin {
+  $i = 0
+ }
+ process {
+  # Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email) -Fore $infoClr
+  $i++
+  $msgData = $MyInvocation.MyCommand.Name, $i, $_.code , $_.empId, $_.email, $_.type, $_.UTY, $_.U8, $_.jobDesc
+  Write-host ('{0},{1},{2},{3},{4},{5},{6},{7},{8}' -f $msgData) -Fore $infoClr
  }
 }
 function Format-UGNInsert {
- begin {}
+ begin {
+  $baseSql = Get-Content .\sql\insert-UGN.sql -Raw
+ }
  process {
-
+  $newObj = $_.PSObject.Copy()
+  $sql = $baseSql -f $_.empId, $_.samid, $_.ln, $_.fn, $_.email, $_.UTY
+  Write-Verbose ($sql | Out-String)
+  $newObj | Add-Member -MemberType NoteProperty -Name sqlInsertUGN -Value $sql
+  $newObj
  }
 }
 function Get-ADData {
@@ -77,7 +101,7 @@ function Get-ADData {
   Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1'
   SearchBase = $StaffOrgUnit
  }
- # $results = ('{0},{1}' -f Ge$id)DUser @employeeParams | Where-Object { $_.employeeId -match '^\d{4,}$$MyInvocation.MyCommand.Name ,' }
+ $results = Get-ADUser @employeeParams | Where-Object { $_.employeeId -match '^\d{4,}' }
  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
  $results
 }
@@ -108,56 +132,72 @@ function Get-EmployeeData {
 #  $results
 # }
 
+function Get-SQLData {
+ param(
+  [string]$Server,
+  [string]$Database,
+  [System.Management.Automation.PSCredential]$Credential,
+  [string]$Query
+ )
+ $msgData = $MyInvocation.MyCommand.Name, $Server, $Database, $Credential.Username, ($Query -split '\n')[0]
+ Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
+ Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
+}
+
 function Format-UserObj {
  begin {
-  function Select-UTY ($code) {
-   switch ($code) {
-    CUMA2AR { 'aduser' }
-    U { 'adteacher' }
-    U { 'adteacher' }
-    P { 'adteacher' }
-    default { 'aduser' }
-   }
-  }
-  function Select-U8 ($code) {
-   switch ($code) {
-    CUMA { 'A' }
-    CUTA { 'T' }
-    CSEA { 'C' }
-    default { 'C' }
-   }
-  }
   function Select-Type ($code) {
    switch ($code) {
-    CUMA2AR { @{UTY = 'aduser'; U8 = 'A' } } # Admin
-    CUTA1AP { @{UTY = 'adteacher'; U8 = 'T' } } # Teachers
-    CSEA2AR { @{UTY = 'aduser'; U8 = 'C' } } # Office Staff
-    2AS { @{UTY = 'aduser'; U8 = 'C' } } # Office Subs
-    1AS { @{UTY = 'adteacher'; U8 = 'T' } } # Teacher Subs
-    U { @{UTY = 'adteacher'; U8 = 'T' } } # Student Teachers
-    default { @{UTY = 'aduser'; U8 = 'C' } } # default
+    'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
+    'CUTA1P' { @{type = 'Teacher'; UTY = 'adteacher'; U8 = 'T' } }
+    'CSEA2R' { @{type = 'Office Staff'; UTY = 'aduser'; U8 = 'C' } }
+    '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
+    '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
+    'U' { @{type = 'Student Teacher'; UTY = 'adteacher'; U8 = 'T' } }
+    default { @{type = 'Default'; UTY = 'aduser'; U8 = 'C' } }
    }
   }
  }
  process {
-  if ($_.empId -is [int]) {
-   [int]$id = $_.empId
+  if ($_.empID -is [int]) {
+   # [int]$id = $_.empId
    # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
-   $obj = $_ | Select-ADObject
-   New-Object -TypeName PSObject -Property @{
-    EM         = $obj.mail
-    GEM        = $obj.homepage
-    SID        = $id
-    UN         = $obj.samAccountName
-    SY         = 'AERIES.NET'
-    TY         = 1
-    bargUnitId = $_.BargUnitId
-    U8         = (Select-Type ($_.)).U8
-    UTY        = Select-UTY $_.EmploymentTypeCode
-    HT         = -1
-    FN         = $_.NameFirst.replace("'", "''") # Fix sinlge quote
-    LN         = $_.NameLast.replace("'", "''") # Fix sinlge quote
+   $ADobj = $_ | Select-ADObject
+   $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
+   $typeData = Select-Type $code
+   $obj = New-Object -TypeName PSObject -Property @{
+    empId     = $_.empId
+    siteId    = $_.siteId
+    email     = $_.emailW
+    gmail     = $ADobj.homepage
+    samid     = $ADobj.samAccountName
+    SY        = 'AERIES.NET'
+    TY        = 1
+    bargId    = $_.bargId
+    code      = $code
+    U8        = $typeData.U8
+    UTY       = $typeData.UTY
+    HT        = -1
+    FN        = $_.fn.replace("'", "''") # Fix sinlge quote
+    LN        = $_.ln.replace("'", "''") # Fix sinlge quote
+    # emailH    = $_.emailH
+    # city      = $_.city
+    # state     = $_.state
+    # addr      = $_.addr
+    # zip       = $_.zip
+    # phone     = $_.phone
+    # cell      = $_.cell
+    empType   = $_.empType
+    empStatus = $_.empStatus
+    jobDesc   = $_.jobDesc
+    persId    = $_.persId
+    type      = $typeData.type
+    dts       = $_.dts
    }
+   # $msgData = $MyInvocation.MyCommand.Name, $code , $_.empId, $_.emailW, $obj.type, $obj.UTY, $obj.U8, $_.jobDesc
+   # Write-host ('{0},{1},{2},{3},{4},{5},{6},{7}' -f $msgData) -Fore $infoClr
+   $obj
+   # read-host 'meh'
   }
  }
 }
@@ -165,25 +205,31 @@ function Format-UserObj {
 function Select-ADObject {
  process {
   if ($_.empId -is [int]) {
+   # Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.emailW)
    [int]$id = $_.empId
-   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $id, $_.EmailWork)
    $global:adData.Where({ [int]$_.employeeId -eq $id })
   }
  }
 }
 
-function Submit-SQLOperation {
- param(
-  [string]$Server,
-  [string]$Database,
-  [System.Management.Automation.PSCredential]$Credential,
-  [string]$Query,
-  [switch]$WhatIf
+function Update-SIS ($sql) {
+ $sqlParams = @{
+  Server     = $SISServer
+  Database   = $SISDatabase
+  Credential = $SISCredential
+  Query      = $sql
+ }
+ $msgData = @(
+  $MyInvocation.MyCommand.Name
+  $sqlParams.Server
+  $sqlParams.Database
+  $sqlParams.Credential.Username
+  ($sqlParams.Query -split '\n')[0]
  )
- $msgData = $MyInvocation.MyCommand.Name, $Server, $Database, $Credential.Username, ($Query -split '\n')[0]
  Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
  if (-not$WhatIf) {
-  Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
+  Write-Host 'Warning. SQL CHANGES HERE!' -Fore $alertClr
+  # Invoke-SqlCmd @sqlParams
  }
 }
 
@@ -195,21 +241,38 @@ function Select-MissingUGN {
    Credential = $SISCredential
    Query      = 'SELECT SID FROM UGN;'
   }
-  $sisUGNData = Submit-SQLOperation @params
+  $sisUGNData = Get-SQLData @params
  }
  process {
-  if ($sisUGNData.SID -notcontains $_.SID) {
-   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.SID)
+  if ($sisUGNData.SID -notcontains $_.empId) {
+   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
    $_
   }
  }
 }
 
-filter Select-MissingSTF {
- if ($global:sisSTFData.ID -notcontains $_.empId) { $_ }
+function Select-MissingSTF {
+ begin {
+  $params = @{
+   Server     = $SISServer
+   Database   = $SISDatabase
+   Credential = $SISCredential
+   Query      = 'SELECT ID FROM STF;'
+  }
+  $sisSTFData = Get-SQLData @params
+ }
+ process {
+  if ($sisSTFData.ID -notcontains $_.empId) {
+   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+   $_
+  }
+ }
 }
 
-# ====================================================================
+filter Select-OfficeStaff {
+ if ($_.type -eq 'Office Staff') { $_ }
+}
+# ================================================================
 # Imported Functions
 . .\lib\Clear-SessionData.ps1
 . .\lib\Load-Module.ps1
@@ -227,14 +290,23 @@ $global:adData = Get-ADData
 # $global:sisUGNData = Get-SisUGNData
 # $global:sisSTFData = Get-SisSTFData
 
-$employeeData | Format-UserObj | Select-MissingUGN | Complete-Processing
+$userObj = $employeeData | Format-UserObj
 
-# $employeeData | Select-MissingUGN | Format-UGNInsert | Add-UGNEntry
+if ($InsertUGN) {
+ Show-BlockInfo 'Insert UGN'
+ $userObj | Select-MissingUGN | Format-UGNInsert | Add-UGNEntry | Complete-Processing
+}
 
-# $employeeData | Select-MissingSTF | Format-STFInsert | Add-STFEntry
+if ($InsertSTF) {
+ Show-BlockInfo 'Insert STF'
+ $userObj | Select-MissingSTF
+ # | Format-STFInsempId | Add-STFEntremail
+}
 
 # may not need as it's a legacy problem solved by this script
 
 # $employeeData | Select-ErrantSTF | Format-STFUpdate | Update-STFEntry
-
-# $employeeData | Select-MissingSSO | Format-SSOInsert | Add-SSOEntry
+if ($InsertSSO) {
+ Show-BlockInfo 'Insert SSO'
+ # $employeeData | Select-MissingSSO | Format-SSOInser_.empI | AddemailW
+}
