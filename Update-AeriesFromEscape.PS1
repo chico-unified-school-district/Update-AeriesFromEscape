@@ -69,6 +69,17 @@ function Add-UGNEntry {
   $_
  }
 }
+
+function Add-STFEntry {
+ begin {}
+ process {
+  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
+  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertSTF -split '\n')[0]))
+  Update-SIS $_.sqlInsertSTF
+  $_
+ }
+}
+
 function Complete-Processing {
  begin {
   $i = 0
@@ -80,6 +91,39 @@ function Complete-Processing {
   Write-host ('{0},{1},{2},{3},{4},{5},{6},{7},{8}' -f $msgData) -Fore $infoClr
  }
 }
+
+function Format-SSOInsert {
+ begin {
+  $baseSql = Get-Content .\sql\insert-STF.sql -Raw
+ }
+ process {
+  $newObj = $_.PSObject.Copy()
+  # ID, LN, FN, EM, U8
+  $sql = $baseSql -f $_.empId, $_.ln, $_.fn, $_.email, $_.U8
+  $msgData = $MyInvocation.MyCommand.Name, $sql
+  Write-Verbose ( $msgData | Out-String )
+  $newObj | Add-Member -MemberType NoteProperty -Name sqlInsertSTF -Value $sql
+  $UID = if ($WhatIf) { 'TEST-UID' } else { $_ | Get-UID }
+  $newObj | Add-Member -MemberType NoteProperty -Name UID -Value $UID
+  $newObj
+ }
+}
+
+function Format-STFInsert {
+ begin {
+  $baseSql = Get-Content .\sql\insert-STF.sql -Raw
+ }
+ process {
+  $newObj = $_.PSObject.Copy()
+  # ID, LN, FN, EM, U8
+  $sql = $baseSql -f $_.empId, $_.ln, $_.fn, $_.email, $_.U8
+  $msgData = $MyInvocation.MyCommand.Name, $sql
+  Write-Verbose ( $msgData | Out-String )
+  $newObj | Add-Member -MemberType NoteProperty -Name sqlInsertSTF -Value $sql
+  $newObj
+ }
+}
+
 function Format-UGNInsert {
  begin {
   $baseSql = Get-Content .\sql\insert-UGN.sql -Raw
@@ -92,60 +136,10 @@ function Format-UGNInsert {
   $newObj
  }
 }
-function Get-ADData {
- Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $DomainController) -Fore $infoClr
- $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
- Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName 'Get-ADUser' -AllowClobber | Out-Null
- $employeeParams = @{
-  filter     = { (employeeID -like "*") -and (mail -like "*@*") }
-  Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1'
-  SearchBase = $StaffOrgUnit
- }
- $results = Get-ADUser @employeeParams | Where-Object { $_.employeeId -match '^\d{4,}' }
- Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
- $results
-}
-
-function Get-EmployeeData {
- $escParams = @{
-  Server     = $EscapeServer
-  Database   = $EscapeDatabase
-  Credential = $EscapeCredential
-  Query      = Get-Content -Path ./sql/escape-aeries-users2.sql -Raw
- }
- Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
- $results = Invoke-SqlCmd @escParams
- Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
- $results
-}
-
-# function Get-SisUGNData {
-#  $sisParams = @{
-#   Server     = $SISServer
-#   Database   = $SISDatabase
-#   Credential = $SISCredential
-#  }
-#  $sql = 'SELECT * FROM UGN'
-#  Write-Host ('{0},{1}\{2},{3}' -f $MyInvocation.MyCommand.Name, $sisServer, $SISDatabase, $sql) -Fore $infoClr
-#  $results = Invoke-SqlCmd @sisParams -Query $sql
-#  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
-#  $results
-# }
-
-function Get-SQLData {
- param(
-  [string]$Server,
-  [string]$Database,
-  [System.Management.Automation.PSCredential]$Credential,
-  [string]$Query
- )
- $msgData = $MyInvocation.MyCommand.Name, $Server, $Database, $Credential.Username, ($Query -split '\n')[0]
- Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
- Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
-}
 
 function Format-UserObj {
  begin {
+  Write-Verbose $MyInvocation.MyCommand.Name
   function Select-Type ($code) {
    switch ($code) {
     'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
@@ -202,6 +196,78 @@ function Format-UserObj {
  }
 }
 
+function Get-ADData {
+ Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $DomainController) -Fore $infoClr
+ $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
+ Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName 'Get-ADUser' -AllowClobber | Out-Null
+ $employeeParams = @{
+  filter     = "employeeID -like `'*`' -and mail -like `'*@*`'"
+  Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1'
+  SearchBase = $StaffOrgUnit
+ }
+ $results = Get-ADUser @employeeParams | Where-Object {
+  ($_.Enabled -eq $True) -and
+  ( $_.employeeId -match '^\d{4,}' )
+ }
+ Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
+ $results
+}
+
+function Get-EmployeeData {
+ $escParams = @{
+  Server     = $EscapeServer
+  Database   = $EscapeDatabase
+  Credential = $EscapeCredential
+  Query      = Get-Content -Path ./sql/escape-aeries-users2.sql -Raw
+ }
+ Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
+ $results = Invoke-SqlCmd @escParams
+ Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
+ $results
+}
+
+# function Get-SisUGNData {
+#  $sisParams = @{
+#   Server     = $SISServer
+#   Database   = $SISDatabase
+#   Credential = $SISCredential
+#  }
+#  $sql = 'SELECT * FROM UGN'
+#  Write-Host ('{0},{1}\{2},{3}' -f $MyInvocation.MyCommand.Name, $sisServer, $SISDatabase, $sql) -Fore $infoClr
+#  $results = Invoke-SqlCmd @sisParams -Query $sql
+#  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
+#  $results
+# }
+
+function Get-SQLData {
+ param(
+  [string]$Server,
+  [string]$Database,
+  [System.Management.Automation.PSCredential]$Credential,
+  [string]$Query
+ )
+ $msgData = $MyInvocation.MyCommand.Name, $Server, $Database, $Credential.Username, ($Query -split '\n')[0]
+ Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
+ Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
+}
+
+function Get-UID {
+ begin {
+  $sisParams = @{
+   Server     = $SISServer
+   Database   = $SISDatabase
+   Credential = $SISCredential
+  }
+ }
+ process {
+  Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
+  $sql = 'SELECT UID FROM UGN WHERE SID = {0}' -f $_.empId
+  $ugnData = Invoke-SqlCmd @sisParams -Query $sql
+  if ($ugnData) { $ugnData[0].UID }
+  else { Write-Error ('{0},{1},{2},UGN not generated' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail) }
+ }
+}
+
 function Select-ADObject {
  process {
   if ($_.empId -is [int]) {
@@ -245,7 +311,28 @@ function Select-MissingUGN {
  }
  process {
   if ($sisUGNData.SID -notcontains $_.empId) {
-   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+   $_
+  }
+ }
+}
+
+function Select-MissingSSO {
+ begin {
+  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
+  $params = @{
+   Server     = $SISServer
+   Database   = $SISDatabase
+   Credential = $SISCredential
+   Query      = 'SELECT GEM FROM SSO;'
+  }
+  $sisSSOData = Get-SQLData @params
+  Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
+ }
+ process {
+  # Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId ) -Fore $infoClr
+  if ($sisSSOData.GEM -notcontains $_.gmail) {
+   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
    $_
   }
  }
@@ -253,6 +340,7 @@ function Select-MissingUGN {
 
 function Select-MissingSTF {
  begin {
+  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
   $params = @{
    Server     = $SISServer
    Database   = $SISDatabase
@@ -260,18 +348,17 @@ function Select-MissingSTF {
    Query      = 'SELECT ID FROM STF;'
   }
   $sisSTFData = Get-SQLData @params
+  Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSTFData.count ) -Fore $infoClr
  }
  process {
+  # Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId ) -Fore $infoClr
   if ($sisSTFData.ID -notcontains $_.empId) {
-   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
    $_
   }
  }
 }
 
-filter Select-OfficeStaff {
- if ($_.type -eq 'Office Staff') { $_ }
-}
 # ================================================================
 # Imported Functions
 . .\lib\Clear-SessionData.ps1
@@ -287,8 +374,6 @@ Show-TestRun
 
 $employeeData = Get-EmployeeData
 $global:adData = Get-ADData
-# $global:sisUGNData = Get-SisUGNData
-# $global:sisSTFData = Get-SisSTFData
 
 $userObj = $employeeData | Format-UserObj
 
@@ -299,14 +384,17 @@ if ($InsertUGN) {
 
 if ($InsertSTF) {
  Show-BlockInfo 'Insert STF'
- $userObj | Select-MissingSTF
- # | Format-STFInsempId | Add-STFEntremail
+ $userObj | Select-MissingSTF | Format-STFInsert | Add-STFEntry | Complete-Processing
+}
+
+if ($InsertSSO) {
+ Show-BlockInfo 'Insert SSO'
+ $userObj | Select-MissingSSO | Format-SSOInsert
+ # | Add-SSOEntry | Complete-Processing
 }
 
 # may not need as it's a legacy problem solved by this script
-
 # $employeeData | Select-ErrantSTF | Format-STFUpdate | Update-STFEntry
-if ($InsertSSO) {
- Show-BlockInfo 'Insert SSO'
- # $employeeData | Select-MissingSSO | Format-SSOInser_.empI | AddemailW
-}
+
+Clear-SessionData
+Show-TestRun
