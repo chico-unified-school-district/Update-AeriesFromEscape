@@ -23,7 +23,7 @@ param (
  [Parameter(Mandatory = $True)]
  [Alias('DC')]
  [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
- [string]$DomainController,
+ [string[]]$DomainController,
  # PSSession to Domain Controller and Use Active Directory CMDLETS
  [Parameter(Mandatory = $True)]
  [Alias('ADCred')]
@@ -33,7 +33,6 @@ param (
  [string]$StaffOrgUnit,
  # Student Information Server
  [Parameter(Mandatory = $true)]
- # [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
  [string]$SISServer,
  [Parameter(Mandatory = $true)]
  [string]$SISDatabase,
@@ -41,7 +40,6 @@ param (
  [System.Management.Automation.PSCredential]$SISCredential,
  # Escape Employee Server
  [Parameter(Mandatory = $true)]
- # [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
  [string]$EscapeServer,
  [Parameter(Mandatory = $true)]
  [string]$EscapeDatabase,
@@ -214,8 +212,17 @@ function Format-UserObj {
  }
 }
 
+function Test-DC {
+ process {
+  if (Test-Connection $_ -Count 1) {
+   $_
+   return
+  }
+ }
+}
+
 function Get-ADData {
- Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $DomainController) -Fore $infoClr
+ Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, ($DomainController -join ',')) -Fore $infoClr
  $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
  Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName 'Get-ADUser' -AllowClobber | Out-Null
  $employeeParams = @{
