@@ -33,7 +33,7 @@ param (
  [string]$StaffOrgUnit,
  # Student Information Server
  [Parameter(Mandatory = $true)]
- [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
+ # [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
  [string]$SISServer,
  [Parameter(Mandatory = $true)]
  [string]$SISDatabase,
@@ -41,7 +41,7 @@ param (
  [System.Management.Automation.PSCredential]$SISCredential,
  # Escape Employee Server
  [Parameter(Mandatory = $true)]
- [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
+ # [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
  [string]$EscapeServer,
  [Parameter(Mandatory = $true)]
  [string]$EscapeDatabase,
@@ -65,7 +65,19 @@ function Add-UGNEntry {
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertUGN -split '\n')[0]))
+  Write-Debug 'Proceed?'
   Update-SIS $_.sqlInsertUGN
+  $_
+ }
+}
+
+function Add-SSOEntry {
+ begin {}
+ process {
+  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
+  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertSSO -split '\n')[0]))
+  Write-Debug 'Proceed?'
+  Update-SIS $_.sqlInsertSSO
   $_
  }
 }
@@ -75,6 +87,7 @@ function Add-STFEntry {
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertSTF -split '\n')[0]))
+  Write-Debug 'Proceed?'
   Update-SIS $_.sqlInsertSTF
   $_
  }
@@ -94,18 +107,23 @@ function Complete-Processing {
 
 function Format-SSOInsert {
  begin {
-  $baseSql = Get-Content .\sql\insert-STF.sql -Raw
+  $baseSql = Get-Content .\sql\insert-SSO.sql -Raw
  }
  process {
-  $newObj = $_.PSObject.Copy()
-  # ID, LN, FN, EM, U8
-  $sql = $baseSql -f $_.empId, $_.ln, $_.fn, $_.email, $_.U8
-  $msgData = $MyInvocation.MyCommand.Name, $sql
-  Write-Verbose ( $msgData | Out-String )
-  $newObj | Add-Member -MemberType NoteProperty -Name sqlInsertSTF -Value $sql
-  $UID = if ($WhatIf) { 'TEST-UID' } else { $_ | Get-UID }
-  $newObj | Add-Member -MemberType NoteProperty -Name UID -Value $UID
-  $newObj
+  if (-not$_.gmail) {
+   Write-Warning  ( '{0},{1},{2},GSUITE address (homepage) missing.' -f $MyInvocation.MyCommand.Name, $_.empId, $_.samid )
+   return
+  }
+  $UID = $_ | Get-UID
+  if ($UID) {
+   $sql = $baseSql -f $UID, $_.gmail
+   $msgData = $MyInvocation.MyCommand.Name, $sql
+   Write-Verbose ( $msgData | Out-String )
+   $newObj = $_.PSObject.Copy()
+   $newObj | Add-Member -MemberType NoteProperty -Name sqlInsertSSO -Value $sql
+   $newObj | Add-Member -MemberType NoteProperty -Name UID -Value $UID
+   $newObj
+  }
  }
 }
 
@@ -153,10 +171,10 @@ function Format-UserObj {
   }
  }
  process {
-  if ($_.empID -is [int]) {
+  $ADobj = $_ | Select-ADObject
+  if ($_.empID -is [int] -and $ADobj) {
    # [int]$id = $_.empId
    # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
-   $ADobj = $_ | Select-ADObject
    $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
    $typeData = Select-Type $code
    $obj = New-Object -TypeName PSObject -Property @{
@@ -226,19 +244,6 @@ function Get-EmployeeData {
  $results
 }
 
-# function Get-SisUGNData {
-#  $sisParams = @{
-#   Server     = $SISServer
-#   Database   = $SISDatabase
-#   Credential = $SISCredential
-#  }
-#  $sql = 'SELECT * FROM UGN'
-#  Write-Host ('{0},{1}\{2},{3}' -f $MyInvocation.MyCommand.Name, $sisServer, $SISDatabase, $sql) -Fore $infoClr
-#  $results = Invoke-SqlCmd @sisParams -Query $sql
-#  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
-#  $results
-# }
-
 function Get-SQLData {
  param(
   [string]$Server,
@@ -263,7 +268,8 @@ function Get-UID {
   Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
   $sql = 'SELECT UID FROM UGN WHERE SID = {0}' -f $_.empId
   $ugnData = Invoke-SqlCmd @sisParams -Query $sql
-  if ($ugnData) { $ugnData[0].UID }
+  if ($WhatIf) { 'TEST-UID' }
+  elseif ($ugnData) { $ugnData[0].UID }
   else { Write-Error ('{0},{1},{2},UGN not generated' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail) }
  }
 }
@@ -295,7 +301,7 @@ function Update-SIS ($sql) {
  Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
  if (-not$WhatIf) {
   Write-Host 'Warning. SQL CHANGES HERE!' -Fore $alertClr
-  # Invoke-SqlCmd @sqlParams
+  Invoke-SqlCmd @sqlParams
  }
 }
 
@@ -359,7 +365,7 @@ function Select-MissingSTF {
  }
 }
 
-# ================================================================
+# ==============================================================================================
 # Imported Functions
 . .\lib\Clear-SessionData.ps1
 . .\lib\Load-Module.ps1
@@ -389,12 +395,8 @@ if ($InsertSTF) {
 
 if ($InsertSSO) {
  Show-BlockInfo 'Insert SSO'
- $userObj | Select-MissingSSO | Format-SSOInsert
- # | Add-SSOEntry | Complete-Processing
+ $userObj | Select-MissingSSO | Format-SSOInsert | Add-SSOEntry | Complete-Processing
 }
-
-# may not need as it's a legacy problem solved by this script
-# $employeeData | Select-ErrantSTF | Format-STFUpdate | Update-STFEntry
 
 Clear-SessionData
 Show-TestRun

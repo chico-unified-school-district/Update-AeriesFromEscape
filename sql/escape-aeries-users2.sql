@@ -29,6 +29,7 @@ SELECT
    -- PersonTypeId IN (1,2,4)
    -- AND
    -- AND BargUnitId IN ('CUTA','CUMA','CSEA','CHRT')
+   AND BargUnitId NOT IN ('REST')
    AND EmploymentStatusCode IN ('A','I','L','W')
    -- AND DateTimeEdited > DATEADD(day,-60,getdate())
   ORDER BY JobCategoryId;
