@@ -21,10 +21,8 @@ $AeriesQuery = "SELECT * FROM UGN WHERE UTY = `'adteacher`' OR  UTY = `'aduser`'
 [cmdletbinding()]
 param (
  [Parameter(Mandatory = $True)]
- [Alias('DC')]
- [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
- [string[]]$DomainController,
- # PSSession to Domain Controller and Use Active Directory CMDLETS
+ [Alias('DCs')]
+ [string[]]$DomainControllers,
  [Parameter(Mandatory = $True)]
  [Alias('ADCred')]
  [System.Management.Automation.PSCredential]$ADCredential,
@@ -245,9 +243,8 @@ function Test-DC {
 }
 
 function Get-ADData {
- Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, ($DomainController -join ',')) -Fore $infoClr
- $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
- Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName 'Get-ADUser' -AllowClobber | Out-Null
+ $dc = Select-DomainController $DomainControllers
+ New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
  $employeeParams = @{
   filter     = "employeeID -like `'*`' -and mail -like `'*@*`'"
   Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1'
@@ -266,7 +263,7 @@ function Get-EmployeeData {
   Server     = $EscapeServer
   Database   = $EscapeDatabase
   Credential = $EscapeCredential
-  Query      = Get-Content -Path ./sql/escape-aeries-users2.sql -Raw
+  Query      = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
  }
  Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
  $results = Invoke-SqlCmd @escParams
@@ -345,7 +342,7 @@ function Select-MissingSSO {
    Query      = 'SELECT GEM FROM SSO;'
   }
   $sisSSOData = Get-SQLData @params
-  # Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
+  Write-Host ('{0},SSO Table Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
  }
  process {
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId )
@@ -381,6 +378,8 @@ function Select-MissingSTF {
 # Imported Functions
 . .\lib\Clear-SessionData.ps1
 . .\lib\Load-Module.ps1
+. .\lib\New-ADSession.ps1
+. .\lib\Select-DomainController.ps1
 . .\lib\Show-BlockInfo.ps1
 . .\lib\Show-TestRun.ps1
 
