@@ -106,14 +106,37 @@ function Complete-Processing {
 function Format-SSOInsert {
  begin {
   $baseSql = Get-Content .\sql\insert-SSO.sql -Raw
+  function Get-UID {
+   begin {
+    $sisParams = @{
+     Server     = $SISServer
+     Database   = $SISDatabase
+     Credential = $SISCredential
+    }
+   }
+   process {
+    Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
+    $sql = 'SELECT UID FROM UGN WHERE SID = {0}' -f $_.empId
+    $uid = (Invoke-SqlCmd @sisParams -Query $sql).UID
+    # Write-Host ($ugnData | out-string)
+    # Write-Host $ugnData.UID
+    # Write-Host 'Derp'
+    # Write-Host $ugnData.gettype()
+    if ($WhatIf -and ($uid -isnot [int])) { 'TEST-UID'; return }
+    if ([int]$uid -is [int]) { $uid; return }
+    Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
+   }
+  }
  }
  process {
   if (-not$_.gmail) {
    Write-Warning  ( '{0},{1},{2},GSUITE address (homepage) missing.' -f $MyInvocation.MyCommand.Name, $_.empId, $_.samid )
    return
   }
-  $UID = $_ | Get-UID
-  if ($UID) {
+  $UID = ($_ | Get-UID)[0]
+  $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.gmail, $UID
+  Write-Host ('{0},{1},{2},UID [{3}]' -f $msgVars)
+  if ([int]$UID -is [int]) {
    $sql = $baseSql -f $UID, $_.gmail
    $msgData = $MyInvocation.MyCommand.Name, $sql
    Write-Verbose ( $msgData | Out-String )
@@ -263,30 +286,12 @@ function Get-SQLData {
  Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
 }
 
-function Get-UID {
- begin {
-  $sisParams = @{
-   Server     = $SISServer
-   Database   = $SISDatabase
-   Credential = $SISCredential
-  }
- }
- process {
-  Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
-  $sql = 'SELECT UID FROM UGN WHERE SID = {0}' -f $_.empId
-  $ugnData = Invoke-SqlCmd @sisParams -Query $sql
-  if ($WhatIf) { 'TEST-UID' }
-  elseif ($ugnData) { $ugnData[0].UID }
-  else { Write-Error ('{0},{1},{2},UGN not generated' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail) }
- }
-}
-
 function Select-ADObject {
  process {
   if ($_.empId -is [int]) {
    # Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.emailW)
    [int]$id = $_.empId
-   $global:adData.Where({ [int]$_.employeeId -eq $id })
+   $script:adData.Where({ [int]$_.employeeId -eq $id })
   }
  }
 }
@@ -340,12 +345,12 @@ function Select-MissingSSO {
    Query      = 'SELECT GEM FROM SSO;'
   }
   $sisSSOData = Get-SQLData @params
-  Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
+  # Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
  }
  process {
-  # Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId ) -Fore $infoClr
+  # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId )
   if ($sisSSOData.GEM -notcontains $_.gmail) {
-   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
+   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
    $_
   }
  }
@@ -386,7 +391,7 @@ Show-TestRun
 'SqlServer' | Load-Module
 
 $employeeData = Get-EmployeeData
-$global:adData = Get-ADData
+$script:adData = Get-ADData
 
 $userObj = $employeeData | Format-UserObj
 
