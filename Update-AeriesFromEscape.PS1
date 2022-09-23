@@ -139,6 +139,8 @@ function Format-SSOInsert {
    $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.gmail, $UID
    Write-Host ('{0},{1},{2},UID [{3}]' -f $msgVars)
    $checkUID = Invoke-Sqlcmd @sisParams -Query "SELECT * FROM SSO WHERE UID = $UID"
+   # When UID present in SSO table but GEM is not correct
+   # then the corresponding row needs to be updated
    $sql = if ($checkUID) {
     $updateSSO -f $_.gmail, $UID
    }
