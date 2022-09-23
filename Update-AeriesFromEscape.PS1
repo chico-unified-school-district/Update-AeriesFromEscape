@@ -101,30 +101,33 @@ function Complete-Processing {
  }
 }
 
+function Get-UID {
+ begin {
+  $sisParams = @{
+   Server     = $SISServer
+   Database   = $SISDatabase
+   Credential = $SISCredential
+  }
+ }
+ process {
+  Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
+  $sql = 'SELECT UID FROM UGN WHERE SID = {0}' -f $_.empId
+  $uid = (Invoke-SqlCmd @sisParams -Query $sql).UID
+  if ($WhatIf -and ($uid -isnot [int])) { 'TEST-UID'; return }
+  if ([int]$uid -is [int]) { $uid; return }
+  Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
+ }
+}
+
 function Format-SSOInsert {
  begin {
-  $baseSql = Get-Content .\sql\insert-SSO.sql -Raw
-  function Get-UID {
-   begin {
-    $sisParams = @{
-     Server     = $SISServer
-     Database   = $SISDatabase
-     Credential = $SISCredential
-    }
-   }
-   process {
-    Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
-    $sql = 'SELECT UID FROM UGN WHERE SID = {0}' -f $_.empId
-    $uid = (Invoke-SqlCmd @sisParams -Query $sql).UID
-    # Write-Host ($ugnData | out-string)
-    # Write-Host $ugnData.UID
-    # Write-Host 'Derp'
-    # Write-Host $ugnData.gettype()
-    if ($WhatIf -and ($uid -isnot [int])) { 'TEST-UID'; return }
-    if ([int]$uid -is [int]) { $uid; return }
-    Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
-   }
+  $sisParams = @{
+   Server     = $SISServer
+   Database   = $SISDatabase
+   Credential = $SISCredential
   }
+  $insertSSO = Get-Content .\sql\insert-SSO.sql -Raw
+  $updateSSO = Get-Content .\sql\update-SSO.sql -Raw
  }
  process {
   if (-not$_.gmail) {
@@ -132,10 +135,16 @@ function Format-SSOInsert {
    return
   }
   $UID = ($_ | Get-UID)[0]
-  $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.gmail, $UID
-  Write-Host ('{0},{1},{2},UID [{3}]' -f $msgVars)
   if ([int]$UID -is [int]) {
-   $sql = $baseSql -f $UID, $_.gmail
+   $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.gmail, $UID
+   Write-Host ('{0},{1},{2},UID [{3}]' -f $msgVars)
+   $checkUID = Invoke-Sqlcmd @sisParams -Query "SELECT * FROM SSO WHERE UID = $UID"
+   $sql = if ($checkUID) {
+    $updateSSO -f $_.gmail, $UID
+   }
+   else {
+    $insertSSO -f $UID, $_.gmail
+   }
    $msgData = $MyInvocation.MyCommand.Name, $sql
    Write-Verbose ( $msgData | Out-String )
    $newObj = $_.PSObject.Copy()
@@ -322,7 +331,7 @@ function Select-MissingUGN {
    Credential = $SISCredential
    Query      = 'SELECT SID FROM UGN;'
   }
-  $sisUGNData = Get-SQLData @params
+  $sisUGNData = Invoke-SqlCmd @params
  }
  process {
   if ($sisUGNData.SID -notcontains $_.empId) {
