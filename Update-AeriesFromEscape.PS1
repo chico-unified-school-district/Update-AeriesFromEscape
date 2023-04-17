@@ -111,7 +111,7 @@ function Get-UID {
  }
  process {
   Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
-  $sql = "SELECT TOP 1 UID FROM UGN WHERE SID = {0} AND UTY = 'adteacher'" -f $_.empId
+  $sql = "SELECT TOP 1 UID FROM UGN WHERE SID = {0}" -f $_.empId
   $uid = (Invoke-SqlCmd @sisParams -Query $sql).UID
   if ($WhatIf -and ([int64]$uid -isnot [int64])) { 'TEST-UID'; return } # returns testUID
   if ([int64]$uid -is [int64]) { $uid; return }
@@ -201,11 +201,14 @@ function Format-UserObj ($adObjs) {
   }
  }
  process {
-  # $ADobj = $_ | Select-ADObject
   [int64]$id = [int64]$_.empId
   $ADobj = $adObjs.Where({ [int64]$_.employeeId -eq [int64]$id })
   if (-not$ADobj) {
    Write-Host ('{0},EmpId Not found in AD: [{1}]' -f $MyInvocation.MyCommand.Name , $id)
+   return
+  }
+  if ($ADobj.Enabled -eq $false) {
+   Write-Host ('{0},EmpId Obj disabled in AD: [{1}]' -f $MyInvocation.MyCommand.Name , $id)
    return
   }
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
@@ -255,7 +258,7 @@ function Get-ADData {
   SearchBase = $StaffOrgUnit
  }
  $results = Get-ADUser @employeeParams | Where-Object {
-  ($_.Enabled -eq $True) -and
+  # ($_.Enabled -eq $True) -and
   ( $_.employeeId -match '^\d{4,}$' )
  }
  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
@@ -286,16 +289,6 @@ function Get-SQLData {
  Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
  Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
 }
-
-# function Select-ADObject {
-#  process {
-#   if ($_.empId -is [int64]) {
-#    # Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.emailW)
-#    [int64]$id = $_.empId
-#    $script:adData.Where({ [int64]$_.employeeId -eq $id })
-#   }
-#  }
-# }
 
 function Update-SIS ($sql) {
  $sqlParams = @{
@@ -395,7 +388,7 @@ Show-TestRun
 'SqlServer' | Load-Module
 
 $employeeData = Get-EmployeeData
-$script:adData = Get-ADData
+$adData = Get-ADData
 
 $userObj = $employeeData | Format-UserObj $adData
 
