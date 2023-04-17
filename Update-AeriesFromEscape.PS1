@@ -111,10 +111,10 @@ function Get-UID {
  }
  process {
   Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
-  $sql = 'SELECT UID FROM UGN WHERE SID = {0}' -f $_.empId
+  $sql = "SELECT TOP 1 UID FROM UGN WHERE SID = {0} AND UTY = 'adteacher'" -f $_.empId
   $uid = (Invoke-SqlCmd @sisParams -Query $sql).UID
-  if ($WhatIf -and ($uid -isnot [int])) { 'TEST-UID'; return }
-  if ([int]$uid -is [int]) { $uid; return }
+  if ($WhatIf -and ([int64]$uid -isnot [int64])) { 'TEST-UID'; return } # returns testUID
+  if ([int64]$uid -is [int64]) { $uid; return }
   Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
  }
 }
@@ -134,8 +134,8 @@ function Format-SSOInsert {
    Write-Warning  ( '{0},{1},{2},GSUITE address (homepage) missing.' -f $MyInvocation.MyCommand.Name, $_.empId, $_.samid )
    return
   }
-  $UID = ($_ | Get-UID)[0]
-  if ([int]$UID -is [int]) {
+  $UID = $_ | Get-UID
+  if ([int64]$UID -is [int64]) {
    $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.gmail, $UID
    Write-Host ('{0},{1},{2},UID [{3}]' -f $msgVars)
    $checkUID = Invoke-Sqlcmd @sisParams -Query "SELECT * FROM SSO WHERE UID = $UID"
@@ -185,7 +185,7 @@ function Format-UGNInsert {
  }
 }
 
-function Format-UserObj {
+function Format-UserObj ($adObjs) {
  begin {
   Write-Verbose $MyInvocation.MyCommand.Name
   function Select-Type ($code) {
@@ -201,55 +201,48 @@ function Format-UserObj {
   }
  }
  process {
-  $ADobj = $_ | Select-ADObject
-  if ($_.empID -is [int] -and $ADobj) {
-   # [int]$id = $_.empId
-   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
-   $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
-   $typeData = Select-Type $code
-   $obj = New-Object -TypeName PSObject -Property @{
-    empId     = $_.empId
-    siteId    = $_.siteId
-    email     = $_.emailW
-    gmail     = $ADobj.homepage
-    samid     = $ADobj.samAccountName
-    SY        = 'AERIES.NET'
-    TY        = 1
-    bargId    = $_.bargId
-    code      = $code
-    U8        = $typeData.U8
-    UTY       = $typeData.UTY
-    HT        = -1
-    FN        = $_.fn.replace("'", "''") # Fix sinlge quote
-    LN        = $_.ln.replace("'", "''") # Fix sinlge quote
-    # emailH    = $_.emailH
-    # city      = $_.city
-    # state     = $_.state
-    # addr      = $_.addr
-    # zip       = $_.zip
-    # phone     = $_.phone
-    # cell      = $_.cell
-    empType   = $_.empType
-    empStatus = $_.empStatus
-    jobDesc   = $_.jobDesc
-    persId    = $_.persId
-    type      = $typeData.type
-    dts       = $_.dts
-   }
-   # $msgData = $MyInvocation.MyCommand.Name, $code , $_.empId, $_.emailW, $obj.type, $obj.UTY, $obj.U8, $_.jobDesc
-   # Write-host ('{0},{1},{2},{3},{4},{5},{6},{7}' -f $msgData) -Fore $infoClr
-   $obj
-   # read-host 'meh'
-  }
- }
-}
-
-function Test-DC {
- process {
-  if (Test-Connection $_ -Count 1) {
-   $_
+  # $ADobj = $_ | Select-ADObject
+  [int64]$id = [int64]$_.empId
+  $ADobj = $adObjs.Where({ [int64]$_.employeeId -eq [int64]$id })
+  if (-not$ADobj) {
+   Write-Host ('{0},EmpId Not found in AD: [{1}]' -f $MyInvocation.MyCommand.Name , $id)
    return
   }
+  # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
+  $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
+  $typeData = Select-Type $code
+  $obj = New-Object -TypeName PSObject -Property @{
+   empId     = $_.empId
+   siteId    = $_.siteId
+   email     = $_.emailW
+   gmail     = $ADobj.homepage
+   samid     = $ADobj.samAccountName
+   SY        = 'AERIES.NET'
+   TY        = 1
+   bargId    = $_.bargId
+   code      = $code
+   U8        = $typeData.U8
+   UTY       = $typeData.UTY
+   HT        = -1
+   FN        = $_.fn.replace("'", "''") # Fix single quote
+   LN        = $_.ln.replace("'", "''") # Fix single quote
+   # emailH    = $_.emailH
+   # city      = $_.city
+   # state     = $_.state
+   # addr      = $_.addr
+   # zip       = $_.zip
+   # phone     = $_.phone
+   # cell      = $_.cell
+   empType   = $_.empType
+   empStatus = $_.empStatus
+   jobDesc   = $_.jobDesc
+   persId    = $_.persId
+   type      = $typeData.type
+   dts       = $_.dts
+  }
+  # $msgData = $MyInvocation.MyCommand.Name, $code , $_.empId, $_.emailW, $obj.type, $obj.UTY, $obj.U8, $_.jobDesc
+  # Write-host ('{0},{1},{2},{3},{4},{5},{6},{7}' -f $msgData) -Fore $infoClr
+  $obj
  }
 }
 
@@ -257,13 +250,13 @@ function Get-ADData {
  $dc = Select-DomainController $DomainControllers
  New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
  $employeeParams = @{
-  filter     = "employeeID -like `'*`' -and mail -like `'*@*`'"
+  filter     = "employeeID -like '*' -and mail -like '*@*'"
   Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1'
   SearchBase = $StaffOrgUnit
  }
  $results = Get-ADUser @employeeParams | Where-Object {
   ($_.Enabled -eq $True) -and
-  ( $_.employeeId -match '^\d{4,}' )
+  ( $_.employeeId -match '^\d{4,}$' )
  }
  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
  $results
@@ -294,15 +287,15 @@ function Get-SQLData {
  Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
 }
 
-function Select-ADObject {
- process {
-  if ($_.empId -is [int]) {
-   # Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.emailW)
-   [int]$id = $_.empId
-   $script:adData.Where({ [int]$_.employeeId -eq $id })
-  }
- }
-}
+# function Select-ADObject {
+#  process {
+#   if ($_.empId -is [int64]) {
+#    # Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.emailW)
+#    [int64]$id = $_.empId
+#    $script:adData.Where({ [int64]$_.employeeId -eq $id })
+#   }
+#  }
+# }
 
 function Update-SIS ($sql) {
  $sqlParams = @{
@@ -327,6 +320,7 @@ function Update-SIS ($sql) {
 
 function Select-MissingUGN {
  begin {
+  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
   $params = @{
    Server     = $SISServer
    Database   = $SISDatabase
@@ -403,7 +397,7 @@ Show-TestRun
 $employeeData = Get-EmployeeData
 $script:adData = Get-ADData
 
-$userObj = $employeeData | Format-UserObj
+$userObj = $employeeData | Format-UserObj $adData
 
 if ($InsertUGN) {
  Show-BlockInfo 'Insert UGN'
