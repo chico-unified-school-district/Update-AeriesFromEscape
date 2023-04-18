@@ -208,7 +208,7 @@ function Format-UserObj ($adObjs) {
    return
   }
   if ($ADobj.Enabled -eq $false) {
-   Write-Host ('{0},EmpId Obj disabled in AD: [{1}]' -f $MyInvocation.MyCommand.Name , $id)
+   Write-Host ('{0},EmpId Obj disabled in AD: [{1}],[{2}]' -f $MyInvocation.MyCommand.Name , $id, $ADobj.Description)
    return
   }
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
@@ -254,7 +254,7 @@ function Get-ADData {
  New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
  $employeeParams = @{
   filter     = "employeeID -like '*' -and mail -like '*@*'"
-  Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1'
+  Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1', 'Description'
   SearchBase = $StaffOrgUnit
  }
  $results = Get-ADUser @employeeParams | Where-Object {
