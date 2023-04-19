@@ -7,9 +7,6 @@ and adds them to the Aeries UNG table in the format: Domain\Username
 .EXAMPLE
 Update-AeriesFromEscape.PS1 -DC $dc -ADCred $adCred -OU 'OU=Employees,OU=Users,DC=OurDistrict,DC=org' -SISServer SISServer -SISData SISDB -SISCred $SISCred `
  -EscapeServer EscServer -EscapeData EscDB -EscapeCred $EscapeCred
-.EXAMPLE
-Update-AeriesFromEscape.PS1 -DC $dc -ADCred $adCred -OU 'OU=Employees,OU=Users,DC=OurDistrict,DC=org' -SISServer SISServer -SISData SISDB -SISCred $SISCred `
- -EscapeServer EscServer -EscapeData EscDB -EscapeCred $EscapeCred -WhatIf -Verbose
 .INPUTS
 .OUTPUTS
 .NOTES
