@@ -193,7 +193,7 @@ function Format-UserObj ($adObjs) {
     '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
     '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
     'U' { @{type = 'Student Teacher'; UTY = 'adteacher'; U8 = 'T' } }
-    default { @{type = 'Default'; UTY = 'aduser'; U8 = 'C' } }
+    default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'C' } }
    }
   }
  }
