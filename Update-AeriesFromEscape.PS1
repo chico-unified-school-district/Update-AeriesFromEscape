@@ -160,8 +160,9 @@ function Format-STFInsert {
  }
  process {
   $newObj = $_.PSObject.Copy()
-  # ID, LN, FN, EM, U8
-  $sql = $baseSql -f $_.empId, $_.ln, $_.fn, $_.email, $_.U8
+  # ID, LN, FN, EM, U8 (Coorespnds to BargUnitID),CP (mobile phone), NP (Notification Preference)
+  # NP 0=Do Not Contact, 1=General and Emergency Announcements, 2=Emergency Announcements
+  $sql = $baseSql -f $_.empId, $_.ln, $_.fn, $_.email, $_.U8, $_.mobile, 1
   $msgData = $MyInvocation.MyCommand.Name, $sql
   Write-Verbose ( $msgData | Out-String )
   $newObj | Add-Member -MemberType NoteProperty -Name sqlInsertSTF -Value $sql
@@ -193,7 +194,7 @@ function Format-UserObj ($adObjs) {
     '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
     '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
     'U' { @{type = 'Student Teacher'; UTY = 'adteacher'; U8 = 'T' } }
-    default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'C' } }
+    default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'T' } }
    }
   }
  }
@@ -211,6 +212,7 @@ function Format-UserObj ($adObjs) {
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
   $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
   $typeData = Select-Type $code
+  $mobile = $_.mobile.replace(' ', '')
   $obj = New-Object -TypeName PSObject -Property @{
    empId     = $_.empId
    siteId    = $_.siteId
@@ -232,7 +234,7 @@ function Format-UserObj ($adObjs) {
    # addr      = $_.addr
    # zip       = $_.zip
    # phone     = $_.phone
-   # cell      = $_.cell
+   mobile    = $mobile
    empType   = $_.empType
    empStatus = $_.empStatus
    jobDesc   = $_.jobDesc

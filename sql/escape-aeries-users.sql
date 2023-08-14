@@ -11,7 +11,7 @@ SELECT
    -- ,HomeAddrStreet AS addr
    -- ,HomeAddrZip AS zip
    -- ,HomePhone AS phone
-   -- ,HomePhoneMobile AS cell
+   ,HomePhoneMobile AS mobile
    ,EmploymentTypeCode AS empType
    ,EmploymentStatusCode AS empStatus
 ,JobCategoryId
