@@ -53,35 +53,34 @@ $infoClr = 'Green'
 $actionClr = 'Yellow'
 $alertClr = 'Red'
 # ============================================
-function Add-UGNEntry {
+function Add-UGNEntry ($params) {
  begin {}
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertUGN -split '\n')[0]))
   Write-Debug 'Proceed?'
-  Update-SIS $_.sqlInsertUGN
+  Update-SIS $params $_.sqlInsertUGN
   $_
  }
 }
 
-function Add-SSOEntry {
+function Add-SSOEntry ($params) {
  begin {}
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertSSO -split '\n')[0]))
   Write-Debug 'Proceed?'
-  Update-SIS $_.sqlInsertSSO
+  Update-SIS $params $_.sqlInsertSSO
   $_
  }
 }
 
-function Add-STFEntry {
- begin {}
+function Add-STFEntry ($params) {
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertSTF -split '\n')[0]))
   Write-Debug 'Proceed?'
-  Update-SIS $_.sqlInsertSTF
+  Update-SIS $params $_.sqlInsertSTF
   $_
  }
 }
@@ -98,31 +97,20 @@ function Complete-Processing {
  }
 }
 
-function Get-UID {
- begin {
-  $sisParams = @{
-   Server     = $SISServer
-   Database   = $SISDatabase
-   Credential = $SISCredential
-  }
- }
+function Get-UID  ($params) {
  process {
   Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
   $sql = "SELECT TOP 1 UID FROM UGN WHERE SID = {0}" -f $_.empId
-  $uid = (Invoke-SqlCmd @sisParams -Query $sql).UID
+  Write-Verbose $sql
+  $uid = (Invoke-SqlCmd @params -Query $sql).UID
   if ($WhatIf -and ([int64]$uid -isnot [int64])) { 'TEST-UID'; return } # returns testUID
   if ([int64]$uid -is [int64]) { $uid; return }
   Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
  }
 }
 
-function Format-SSOInsert {
+function Format-SSOInsert ($params) {
  begin {
-  $sisParams = @{
-   Server     = $SISServer
-   Database   = $SISDatabase
-   Credential = $SISCredential
-  }
   $insertSSO = Get-Content .\sql\insert-SSO.sql -Raw
   $updateSSO = Get-Content .\sql\update-SSO.sql -Raw
  }
@@ -131,11 +119,11 @@ function Format-SSOInsert {
    Write-Warning  ( '{0},{1},{2},GSUITE address (homepage) missing.' -f $MyInvocation.MyCommand.Name, $_.empId, $_.samid )
    return
   }
-  $UID = $_ | Get-UID
+  $UID = $_ | Get-UID $params
   if ([int64]$UID -is [int64]) {
    $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.gmail, $UID
    Write-Host ('{0},{1},{2},UID [{3}]' -f $msgVars)
-   $checkUID = Invoke-Sqlcmd @sisParams -Query "SELECT * FROM SSO WHERE UID = $UID"
+   if ($UID) { $checkUID = Invoke-Sqlcmd @params -Query "SELECT * FROM SSO WHERE UID = $UID" }
    # When UID present in SSO table but GEM is not correct
    # then the corresponding row needs to be updated
    $sql = if ($checkUID) {
@@ -264,62 +252,32 @@ function Get-ADData {
  $results
 }
 
-function Get-EmployeeData {
- $escParams = @{
-  Server     = $EscapeServer
-  Database   = $EscapeDatabase
-  Credential = $EscapeCredential
-  Query      = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
- }
- Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
- $results = Invoke-SqlCmd @escParams
+function Get-EmployeeData ($params) {
+ # Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
+ $results = Invoke-SqlCmd @params
  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
  $results
 }
 
-function Get-SQLData {
- param(
-  [string]$Server,
-  [string]$Database,
-  [System.Management.Automation.PSCredential]$Credential,
-  [string]$Query
- )
- $msgData = $MyInvocation.MyCommand.Name, $Server, $Database, $Credential.Username, ($Query -split '\n')[0]
- Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
- Invoke-SqlCmd -ServerInstance $Server -Database $Database -Credential $Credential -Query $Query
-}
-
-function Update-SIS ($sql) {
- $sqlParams = @{
-  Server     = $SISServer
-  Database   = $SISDatabase
-  Credential = $SISCredential
-  Query      = $sql
- }
+function Update-SIS ($params, $sql) {
  $msgData = @(
   $MyInvocation.MyCommand.Name
-  $sqlParams.Server
-  $sqlParams.Database
-  $sqlParams.Credential.Username
-  ($sqlParams.Query -split '\n')[0]
+  $params.Server
+  $params.Database
+  $params.Credential.Username
+  ($sql -split '\n')[0]
  )
  Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
  if (-not$WhatIf) {
   Write-Host 'Warning. SQL CHANGES HERE!' -Fore $alertClr
-  Invoke-SqlCmd @sqlParams
+  Invoke-SqlCmd @params -Query $sql
  }
 }
 
-function Select-MissingUGN {
+function Select-MissingUGN  ($params) {
  begin {
   Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
-  $params = @{
-   Server     = $SISServer
-   Database   = $SISDatabase
-   Credential = $SISCredential
-   Query      = 'SELECT SID FROM UGN;'
-  }
-  $sisUGNData = Invoke-SqlCmd @params
+  $sisUGNData = Invoke-SqlCmd @params -Query 'SELECT SID FROM UGN;'
  }
  process {
   if ($sisUGNData.SID -notcontains $_.empId) {
@@ -329,37 +287,24 @@ function Select-MissingUGN {
  }
 }
 
-function Select-MissingSSO {
+function Select-MissingSSO ($params) {
  begin {
   Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
-  $params = @{
-   Server     = $SISServer
-   Database   = $SISDatabase
-   Credential = $SISCredential
-   Query      = 'SELECT GEM FROM SSO;'
-  }
-  $sisSSOData = Get-SQLData @params
+  $sisSSOData = Invoke-SqlCmd @params -Query 'SELECT GEM FROM SSO;'
   Write-Host ('{0},SSO Table Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
  }
  process {
-  # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId )
-  if ($sisSSOData.GEM -notcontains $_.gmail) {
-   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
-   $_
-  }
+  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId )
+  if ($sisSSOData.GEM -contains $_.gmail) { return }
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
+  $_
  }
 }
 
-function Select-MissingSTF {
+function Select-MissingSTF ($params) {
  begin {
   Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
-  $params = @{
-   Server     = $SISServer
-   Database   = $SISDatabase
-   Credential = $SISCredential
-   Query      = 'SELECT ID FROM STF;'
-  }
-  $sisSTFData = Get-SQLData @params
+  $sisSTFData = Invoke-SqlCmd @params -Query 'SELECT ID FROM STF;'
   Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSTFData.count ) -Fore $infoClr
  }
  process {
@@ -386,25 +331,35 @@ Show-TestRun
 
 'SqlServer' | Load-Module
 
-$employeeData = Get-EmployeeData
+$empParams = @{
+ Server                 = $EscapeServer
+ Database               = $EscapeDatabase
+ Credential             = $EscapeCredential
+ TrustServerCertificate = $true
+ Query                  = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
+}
+
+$sisParams = @{
+ Server                 = $SISServer
+ Database               = $SISDatabase
+ Credential             = $SISCredential
+ TrustServerCertificate = $true
+}
+
+$employeeData = Get-EmployeeData $empParams
 $adData = Get-ADData
 
 $userObj = $employeeData | Format-UserObj $adData
 
-if ($InsertUGN) {
- Show-BlockInfo 'Insert UGN'
- $userObj | Select-MissingUGN | Format-UGNInsert | Add-UGNEntry | Complete-Processing
-}
+Show-BlockInfo 'Insert UGN'
+$userObj | Select-MissingUGN $sisParams | Format-UGNInsert | Add-UGNEntry $sisParams | Complete-Processing
 
-if ($InsertSTF) {
- Show-BlockInfo 'Insert STF'
- $userObj | Select-MissingSTF | Format-STFInsert | Add-STFEntry | Complete-Processing
-}
+Show-BlockInfo 'Insert STF'
+$userObj | Select-MissingSTF $sisParams | Format-STFInsert | Add-STFEntry $sisParams | Complete-Processing
 
-if ($InsertSSO) {
- Show-BlockInfo 'Insert SSO'
- $userObj | Select-MissingSSO | Format-SSOInsert | Add-SSOEntry | Complete-Processing
-}
+Show-BlockInfo 'Insert SSO'
+$userObj | Select-MissingSSO $sisParams | Format-SSOInsert $sisParams | Add-SSOEntry $sisParams | Complete-Processing
+
 
 Clear-SessionData
 Show-TestRun
