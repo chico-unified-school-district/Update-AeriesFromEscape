@@ -216,12 +216,6 @@ function Format-UserObj ($adObjs) {
    HT        = -1
    FN        = $_.fn.replace("'", "''") # Fix single quote
    LN        = $_.ln.replace("'", "''") # Fix single quote
-   # emailH    = $_.emailH
-   # city      = $_.city
-   # state     = $_.state
-   # addr      = $_.addr
-   # zip       = $_.zip
-   # phone     = $_.phone
    mobile    = $mobile
    empType   = $_.empType
    empStatus = $_.empStatus

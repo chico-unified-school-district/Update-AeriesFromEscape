@@ -6,17 +6,12 @@ SELECT
    ,NameFirst AS fn
    ,BargUnitId AS bargId
    ,EmailHome AS emailH
-   -- ,HomeAddrCity AS city
-   -- ,HomeAddrStateCode AS state
-   -- ,HomeAddrStreet AS addr
-   -- ,HomeAddrZip AS zip
-   -- ,HomePhone AS phone
    ,HomePhoneMobile AS mobile
    ,EmploymentTypeCode AS empType
    ,EmploymentStatusCode AS empStatus
-,JobCategoryId
-,JobCategoryDescr
-,JobClassId
+   ,JobCategoryId
+   ,JobCategoryDescr
+   ,JobClassId
    ,JobClassDescr AS jobDesc
    ,PersonTypeId AS persId
    ,DateTimeEdited AS dts
