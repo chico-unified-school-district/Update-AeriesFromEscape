@@ -54,7 +54,6 @@ $actionClr = 'Yellow'
 $alertClr = 'Red'
 # ============================================
 function Add-UGNEntry ($params) {
- begin {}
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertUGN -split '\n')[0]))
@@ -65,7 +64,6 @@ function Add-UGNEntry ($params) {
 }
 
 function Add-SSOEntry ($params) {
- begin {}
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.name, (($_.sqlInsertSSO -split '\n')[0]))
@@ -181,7 +179,7 @@ function Format-UserObj ($adObjs) {
     'CSEA2R' { @{type = 'Office Staff'; UTY = 'aduser'; U8 = 'C' } }
     '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
     '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
-    'U' { @{type = 'Student Teacher'; UTY = 'adteacher'; U8 = 'T' } }
+    '6' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
     default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'T' } }
    }
   }
@@ -353,7 +351,6 @@ $userObj | Select-MissingSTF $sisParams | Format-STFInsert | Add-STFEntry $sisPa
 
 Show-BlockInfo 'Insert SSO'
 $userObj | Select-MissingSSO $sisParams | Format-SSOInsert $sisParams | Add-SSOEntry $sisParams | Complete-Processing
-
 
 Clear-SessionData
 Show-TestRun
