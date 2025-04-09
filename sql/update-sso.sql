@@ -1,1 +1,0 @@
-UPDATE SSO SET GEM = '{0}' WHERE UID = {1}

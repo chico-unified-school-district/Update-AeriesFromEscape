@@ -1,1 +1,0 @@
-INSERT INTO SSO (UID, AK, EID, SCU, GEM) VALUES ({0},'',0,'','{1}')
