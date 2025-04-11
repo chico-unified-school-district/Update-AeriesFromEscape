@@ -288,7 +288,7 @@ Import-Module CommonScriptFunctions
 Import-Module -Name dbatools -Cmdlet Invoke-DbaQuery, Set-DbatoolsConfig
 
 Clear-SessionData
-Show-TestRun
+if ($WhatIf) { Show-TestRun }
 Show-BlockInfo Main
 
 $empParams = @{
@@ -318,4 +318,4 @@ Show-BlockInfo 'Insert SSO'
 $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
 
 Clear-SessionData
-Show-TestRun
+if ($WhatIf) { Show-TestRun }

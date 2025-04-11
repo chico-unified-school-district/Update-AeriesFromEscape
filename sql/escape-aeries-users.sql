@@ -30,7 +30,7 @@ SELECT
     )
     -- Student worker accounts
     OR (
-      PersonTypeId =6
+      PersonTypeId = 6
       AND DateTimeEdited > DATEADD(day,-30,getdate())
       AND EmploymentStatusCode IN ('A')
       )
