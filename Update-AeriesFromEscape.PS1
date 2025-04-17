@@ -227,7 +227,7 @@ function Set-Site {
  process {
   $siteId = if ($_.siteId -match '\d') { $_.siteId }
   elseif ($_.deptNum -match '\d') { $_.deptNum }
-  else { 'NULL' }
+  else { [System.DBNull]::Value }
   $_.siteId = $siteId
   $_
  }
