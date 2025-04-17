@@ -216,7 +216,7 @@ function Set-PositionStatus {
    2 { 2 } # Probationary
    'B' { 2 } # Probationary
    'U' { 5 } # Student Teacher
-   default { 'NULL' }
+   default { [System.DBNull]::Value }
   }
   $_.positionStatus = $result
   $_
