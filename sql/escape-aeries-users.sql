@@ -26,12 +26,12 @@ SELECT
     -- AND BargUnitId IN ('CUTA','CUMA','CSEA','CHRT')
     AND BargUnitId NOT IN ('REST')
     AND EmploymentStatusCode IN ('A','I','L','W')
-    AND DateTimeEdited > DATEADD(day,-30,getdate())
+    AND DateTimeEdited > DATEADD(day,-5,getdate())
     )
     -- Student worker accounts
     OR (
       PersonTypeId = 6
-      AND DateTimeEdited > DATEADD(day,-30,getdate())
+      AND DateTimeEdited > DATEADD(day,-5,getdate())
       AND EmploymentStatusCode IN ('A')
       )
   ORDER BY JobCategoryId;

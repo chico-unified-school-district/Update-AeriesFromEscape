@@ -59,7 +59,7 @@ function Add-UGNEntry ($params) {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   # @sid,@un,@ln,@fn,@em,@uty - $_.empId, $_.samid, $_.ln, $_.fn, $_.email, $_.UTY
   $sqlVars = "sid=$($_.empid)", "un=$($_.samid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "uty=$($_.UTY)"
-  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $sql, ($sqlVars -join ','))
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $sql, ($sqlVars -join ',')) -F DarkCyan
   if (!$Whatif) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
   $_
  }
@@ -69,7 +69,7 @@ function Add-SSOEntry ($params) {
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   $sqlVars = "gem=$($_.gmail)", "uid=$($_.UID)"
-  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $sql, ($sqlVars -join ','))
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.sqlSSO, ($sqlVars -join ',')) -F DarkCyan
   if (!$WhatIf) { New-SqlOperation @params -Query $_.sqlSSO -Parameters $sqlVars }
   $_
  }
@@ -79,26 +79,53 @@ function Add-STFEntry ($params) {
  begin {
   # ID, LN, FN, EM, U8 (Coorespnds to BargUnitID),CP (mobile phone), NP (Notification Preference)
   # NP 0=Do Not Contact, 1=General and Emergency Announcements, 2=Emergency Announcements
-  $sql = "INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP) VALUES (@id,@ln,@fn,@em,@u8,@cp,1)"
+  $sql = "INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP,PS,PSC) VALUES (@id,@ln,@fn,@em,@u8,@cp,1,@ps,@psc)"
  }
  process {
-  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
-  $sqlVars = "id=$($_.empid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "u8=$($_.u8)", "cp=$($_.mobile)"
-  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $sql, ($sqlVars -join ','))
-  if (!$WhatIf) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
+  $sqlVars = "id=$($_.empid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)",
+  "u8=$($_.u8)", "cp=$($_.mobile)", "ps=$($_.positionStatus)", "psc=$($_.siteId)"
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $sql, ($sqlVars -join ',')) -F DarkCyan
+  #TODO
+  # pause
+  if (!$WhatIf) {
+   New-SqlOperation @params -Query $sql -Parameters $sqlVars
+  }
   $_
  }
 }
 
 function Complete-Processing {
- begin {
-  $i = 0
- }
+ begin { $i = 0 }
  process {
-  # Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email) -Fore $infoClr
   $i++
   $msgData = $MyInvocation.MyCommand.Name, $i, $_.code , $_.empId, $_.email, $_.type, $_.UTY, $_.U8, $_.jobDesc
   Write-host ('{0},{1},{2},{3},{4},{5},{6},{7},{8}' -f $msgData) -Fore $infoClr
+  Write-Verbose ($_ | Out-String)
+ }
+}
+
+function Set-ADData {
+ begin {
+  $dc = Select-DomainController $DomainControllers
+  New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
+ }
+ process {
+  Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.fn, $_.ln) -F Green
+  $adParams = @{
+   Filter     = "EmployeeID -eq $($_.empId) -and mail -like '*@*' -and Enabled -eq 'True'"
+   Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1', 'Description', 'departmentNumber'
+  }
+  $adObj = Get-Aduser @adParams
+  if (!$adObj) {
+   $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
+   return (Write-Host ('{0},{1},{2},{3},Employee not found' -f $msg))
+  }
+  # Write-Verbose ($adObj | out-string)
+  $_.deptNum = try { $adObj.departmentNumber[0] } catch {}
+  $_.gmail = $adObj.homepage
+  $_.samid = $adObj.samAccountName
+  $_
  }
 }
 
@@ -111,9 +138,140 @@ function Get-UID  ($params) {
   $sqlVars = "sid=$($_.empId)"
   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $sql, $sqlVars)
   $uid = (New-SqlOperation @params -Query $sql -Parameters $sqlVars).UID
-  if ($WhatIf -and ([int64]$uid -isnot [int64])) { 'TEST-UID'; return } # returns testUID
+  if (!$uid -and $WhatIf) { $uid = 99999999 }
   if ([int64]$uid -is [int64]) { $uid; return }
   Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
+ }
+}
+
+function Format-UserObj {
+ process {
+  New-Object -TypeName PSObject -Property @{
+   empId          = $_.empId
+   siteId         = $_.siteId
+   deptNum        = $null
+   email          = $_.emailW
+   gmail          = $null
+   samid          = $null
+   bargId         = $_.bargId
+   code           = $code
+   U8             = $null
+   UTY            = $null
+   HT             = -1
+   FN             = $_.fn.replace("'", "''") # Fix single quote
+   LN             = $_.ln.replace("'", "''") # Fix single quote
+   mobile         = $_.mobile.replace(' ', '')
+   empType        = $_.empType
+   empStatus      = $_.empStatus
+   jobDesc        = $_.jobDesc
+   persId         = $_.persId
+   positionStatus = $null
+   type           = $null
+   dts            = $_.dts
+   sqlSSO         = $null
+   UID            = $null
+  }
+ }
+}
+
+function Get-EmployeeData ($params) {
+ $query = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
+ $results = New-SqlOperation @params -Query $query
+ Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
+ Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
+ $results
+}
+
+function Set-EmployeeTypeData {
+ begin {
+ }
+ process {
+  $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
+  $typeData = switch ($code) {
+   'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
+   'CUTA1P' { @{type = 'Teacher'; UTY = 'adteacher'; U8 = 'T' } }
+   'CSEA2R' { @{type = 'Office Staff'; UTY = 'aduser'; U8 = 'C' } }
+   '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
+   '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
+   '6U' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
+   '6' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
+   default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'T' } }
+  }
+  Write-Verbose ('{0},{1},Code: {2}' -f $MyInvocation.MyCommand.Name, $_.empId, $code)
+  $_.code = $code
+  $_.U8 = $typeData.U8
+  $_.UTY = $typeData.UTY
+  $_.type = $typeData.type
+  $_
+ }
+}
+
+function Set-PositionStatus {
+ begin {
+ }
+ process {
+  $result = switch ($_.empType) {
+   'P' { 1 } # Tenured
+   1 { 2 } # Probationary
+   2 { 2 } # Probationary
+   'B' { 2 } # Probationary
+   'U' { 5 } # Student Teacher
+   default { 'NULL' }
+  }
+  $_.positionStatus = $result
+  $_
+ }
+}
+
+function Set-Site {
+ process {
+  $siteId = if ($_.siteId -match '\d') { $_.siteId }
+  elseif ($_.deptNum -match '\d') { $_.deptNum }
+  else { 'NULL' }
+  $_.siteId = $siteId
+  $_
+ }
+}
+
+function Select-MissingUGN  ($params) {
+ begin {
+  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
+  $sisUGNData = New-SqlOperation @params -Query 'SELECT SID FROM UGN;'
+ }
+ process {
+  if ($sisUGNData.SID -notcontains $_.empId) {
+   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+   $_
+  }
+ }
+}
+
+function Select-MissingSSO ($params) {
+ begin {
+  # Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
+  $sisSSOData = New-SqlOperation @params -Query 'SELECT GEM FROM SSO;'
+  Write-Host ('{0},SSO Table Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
+ }
+ process {
+  # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId )
+  if ($sisSSOData.GEM -contains $_.gmail) { return }
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
+  $_
+ }
+}
+
+function Select-MissingSTF ($params) {
+ begin {
+  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
+  $sisSTFData = New-SqlOperation @params -Query 'SELECT ID FROM STF;'
+  Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSTFData.count ) -Fore $infoClr
+ }
+ process {
+  # Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId ) -Fore $infoClr
+  if ($sisSTFData.ID -notcontains $_.empId) {
+   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+   $_
+  }
  }
 }
 
@@ -142,147 +300,7 @@ function Select-SqlSSO ($params) {
  }
 }
 
-function Format-UserObj ($adObjs) {
- begin {
-  Write-Verbose $MyInvocation.MyCommand.Name
-  function Select-Type ($code) {
-   switch ($code) {
-    'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
-    'CUTA1P' { @{type = 'Teacher'; UTY = 'adteacher'; U8 = 'T' } }
-    'CSEA2R' { @{type = 'Office Staff'; UTY = 'aduser'; U8 = 'C' } }
-    '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
-    '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
-    '6' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
-    default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'T' } }
-   }
-  }
- }
- process {
-  [int64]$id = [int64]$_.empId
-  $ADobj = $adObjs.Where({ [int64]$_.employeeId -eq [int64]$id })
-  if (-not$ADobj) {
-   Write-Host ('{0},EmpId Not found in AD: [{1}]' -f $MyInvocation.MyCommand.Name , $id)
-   return
-  }
-  if ($ADobj.Enabled -eq $false) {
-   Write-Host ('{0},EmpId Obj disabled in AD: [{1}],[{2}]' -f $MyInvocation.MyCommand.Name , $id, $ADobj.Description)
-   return
-  }
-  # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name , $id)
-  $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
-  $typeData = Select-Type $code
-  $mobile = $_.mobile.replace(' ', '')
-  $obj = New-Object -TypeName PSObject -Property @{
-   empId     = $_.empId
-   siteId    = $_.siteId
-   email     = $_.emailW
-   gmail     = $ADobj.homepage
-   samid     = $ADobj.samAccountName
-   SY        = 'AERIES.NET'
-   TY        = 1
-   bargId    = $_.bargId
-   code      = $code
-   U8        = $typeData.U8
-   UTY       = $typeData.UTY
-   HT        = -1
-   FN        = $_.fn.replace("'", "''") # Fix single quote
-   LN        = $_.ln.replace("'", "''") # Fix single quote
-   mobile    = $mobile
-   empType   = $_.empType
-   empStatus = $_.empStatus
-   jobDesc   = $_.jobDesc
-   persId    = $_.persId
-   type      = $typeData.type
-   dts       = $_.dts
-   sqlSSO    = $null
-   UID       = $null
-  }
-  # $msgData = $MyInvocation.MyCommand.Name, $code , $_.empId, $_.emailW, $obj.type, $obj.UTY, $obj.U8, $_.jobDesc
-  # Write-host ('{0},{1},{2},{3},{4},{5},{6},{7}' -f $msgData) -Fore $infoClr
-  $obj
- }
-}
-
-function Get-ADData {
- $dc = Select-DomainController $DomainControllers
- New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
- $employeeParams = @{
-  filter     = "employeeID -like '*' -and mail -like '*@*'"
-  Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1', 'Description'
-  SearchBase = $StaffOrgUnit
- }
- $results = Get-ADUser @employeeParams | Where-Object {
-  # ($_.Enabled -eq $True) -and
-  ( $_.employeeId -match '^\d{4,}$' )
- }
- Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
- $results
-}
-
-function Get-EmployeeData ($params) {
- $query = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
- $results = New-SqlOperation @params -Query $query
- Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
- Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
- $results
-}
-
-function Update-SIS ($params, $sql) {
- $msgData = @(
-  $MyInvocation.MyCommand.Name
-  $params.Server
-  $params.Database
-  $params.Credential.Username
-  ($sql -split '\n')[0]
- )
- Write-Host ('{0},[{1}\{2} as {3}],[{4}]' -f $msgData) -Fore $actionClr
- if (-not$WhatIf) {
-  Write-Host 'Warning. SQL CHANGES HERE!' -Fore $alertClr
-  Invoke-SqlCmd @params -Query $sql
- }
-}
-
-function Select-MissingUGN  ($params) {
- begin {
-  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
-  $sisUGNData = New-SqlOperation @params -Query 'SELECT SID FROM UGN;'
- }
- process {
-  if ($sisUGNData.SID -notcontains $_.empId) {
-   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
-   $_
-  }
- }
-}
-
-function Select-MissingSSO ($params) {
- begin {
-  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
-  $sisSSOData = New-SqlOperation @params -Query 'SELECT GEM FROM SSO;'
-  Write-Host ('{0},SSO Table Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
- }
- process {
-  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId )
-  if ($sisSSOData.GEM -contains $_.gmail) { return }
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
-  $_
- }
-}
-
-function Select-MissingSTF ($params) {
- begin {
-  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
-  $sisSTFData = New-SqlOperation @params -Query 'SELECT ID FROM STF;'
-  Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSTFData.count ) -Fore $infoClr
- }
- process {
-  # Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId ) -Fore $infoClr
-  if ($sisSTFData.ID -notcontains $_.empId) {
-   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
-   $_
-  }
- }
-}
+# =========================================================================
 
 Import-Module CommonScriptFunctions
 Import-Module -Name dbatools -Cmdlet Invoke-DbaQuery, Set-DbatoolsConfig
@@ -303,10 +321,13 @@ $sisParams = @{
  Credential = $SISCredential
 }
 
-$employeeData = Get-EmployeeData $empParams
-$adData = Get-ADData
-
-$userObj = $employeeData | Format-UserObj $adData
+Show-BlockInfo 'Format Objects'
+$userObj = Get-EmployeeData $empParams |
+ Format-UserObj |
+  Set-ADData |
+   Set-Site |
+    Set-PositionStatus |
+     Set-EmployeeTypeData
 
 Show-BlockInfo 'Insert UGN'
 $userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Complete-Processing
