@@ -105,30 +105,6 @@ function Complete-Processing {
  }
 }
 
-function Set-ADData {
- begin {
-  $dc = Select-DomainController $DomainControllers
-  New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
- }
- process {
-  Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.fn, $_.ln) -F Green
-  $adParams = @{
-   Filter     = "EmployeeID -eq $($_.empId) -and mail -like '*@*' -and Enabled -eq 'True'"
-   Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1', 'Description', 'departmentNumber'
-  }
-  $adObj = Get-Aduser @adParams
-  if (!$adObj) {
-   $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
-   return (Write-Host ('{0},{1},{2},{3},Employee not found' -f $msg))
-  }
-  # Write-Verbose ($adObj | out-string)
-  $_.deptNum = try { $adObj.departmentNumber[0] } catch {}
-  $_.gmail = $adObj.homepage
-  $_.samid = $adObj.samAccountName
-  $_
- }
-}
-
 function Get-UID  ($params) {
  begin {
   $sql = "SELECT TOP 1 UID FROM UGN WHERE SID = @sid"
@@ -177,8 +153,7 @@ function Format-UserObj {
 function Get-EmployeeData ($params) {
  $query = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
  $results = New-SqlOperation @params -Query $query
- Write-Host ('{0},{1}\{2}' -f $MyInvocation.MyCommand.Name, $EscapeServer, $EscapeDatabase) -Fore $infoClr
- Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $results.count) -Fore $infoClr
+ Write-Host ('{0},{1},Count: {2}' -f $MyInvocation.MyCommand.Name, $EscapeDatabase, $results.count) -Fore $infoClr
  $results
 }
 
@@ -223,6 +198,30 @@ function Set-PositionStatus {
  }
 }
 
+function Set-ADData {
+ begin {
+  $dc = Select-DomainController $DomainControllers
+  New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
+ }
+ process {
+  Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.fn, $_.ln)
+  $adParams = @{
+   Filter     = "EmployeeID -eq $($_.empId) -and mail -like '*@*' -and Enabled -eq 'True'"
+   Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1', 'Description', 'departmentNumber'
+  }
+  $adObj = Get-Aduser @adParams
+  if (!$adObj) {
+   $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
+   return (Write-Host ('{0},{1},{2},{3},Employee not found' -f $msg))
+  }
+  # Write-Verbose ($adObj | out-string)
+  $_.deptNum = try { $adObj.departmentNumber[0] } catch {}
+  $_.gmail = $adObj.homepage
+  $_.samid = $adObj.samAccountName
+  $_
+ }
+}
+
 function Set-Site {
  process {
   $siteId = if ($_.siteId -match '\d') { $_.siteId }
@@ -235,7 +234,6 @@ function Set-Site {
 
 function Select-MissingUGN  ($params) {
  begin {
-  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
   $sisUGNData = New-SqlOperation @params -Query 'SELECT SID FROM UGN;'
  }
  process {
@@ -248,23 +246,19 @@ function Select-MissingUGN  ($params) {
 
 function Select-MissingSSO ($params) {
  begin {
-  # Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
   $sisSSOData = New-SqlOperation @params -Query 'SELECT GEM FROM SSO;'
-  Write-Host ('{0},SSO Table Count {1}' -f $MyInvocation.MyCommand.Name, $sisSSOData.count ) -Fore $infoClr
  }
  process {
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId )
   if ($sisSSOData.GEM -contains $_.gmail) { return }
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
+  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
   $_
  }
 }
 
 function Select-MissingSTF ($params) {
  begin {
-  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
   $sisSTFData = New-SqlOperation @params -Query 'SELECT ID FROM STF;'
-  Write-Host ('{0},Count {1}' -f $MyInvocation.MyCommand.Name, $sisSTFData.count ) -Fore $infoClr
  }
  process {
   # Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId ) -Fore $infoClr
@@ -321,7 +315,6 @@ $sisParams = @{
  Credential = $SISCredential
 }
 
-Show-BlockInfo 'Format Objects'
 $userObj = Get-EmployeeData $empParams |
  Format-UserObj |
   Set-ADData |
