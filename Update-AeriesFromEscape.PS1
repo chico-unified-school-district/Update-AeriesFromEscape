@@ -153,7 +153,7 @@ function Format-UserObj {
 function Get-EmployeeData ($params) {
  $query = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
  $results = New-SqlOperation @params -Query $query
- Write-Host ('{0},{1},Count: {2}' -f $MyInvocation.MyCommand.Name, $EscapeDatabase, $results.count) -Fore $infoClr
+ Write-Host ('{0},{1},Count: {2}' -f $MyInvocation.MyCommand.Name, $EscapeDatabase, @($results).count) -Fore $infoClr
  $results
 }
 
