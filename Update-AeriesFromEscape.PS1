@@ -47,8 +47,7 @@ param (
 
 # Variables ==================================
 $infoClr = 'Green'
-$actionClr = 'Yellow'
-$alertClr = 'Red'
+$actionClr = 'DarkCyan'
 # ============================================
 function Add-UGNEntry ($params) {
  begin {
@@ -59,7 +58,7 @@ function Add-UGNEntry ($params) {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   # @sid,@un,@ln,@fn,@em,@uty - $_.empId, $_.samid, $_.ln, $_.fn, $_.email, $_.UTY
   $sqlVars = "sid=$($_.empid)", "un=$($_.samid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "uty=$($_.UTY)"
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $sql, ($sqlVars -join ',')) -F DarkCyan
+  Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
   if (!$Whatif) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
   $_
  }
@@ -69,7 +68,7 @@ function Add-SSOEntry ($params) {
  process {
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   $sqlVars = "gem=$($_.gmail)", "uid=$($_.UID)"
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.sqlSSO, ($sqlVars -join ',')) -F DarkCyan
+  Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $_.sqlSSO, ($sqlVars -join ',')) -F $actionClr
   if (!$WhatIf) { New-SqlOperation @params -Query $_.sqlSSO -Parameters $sqlVars }
   $_
  }
@@ -85,12 +84,8 @@ function Add-STFEntry ($params) {
   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
   $sqlVars = "id=$($_.empid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)",
   "u8=$($_.u8)", "cp=$($_.mobile)", "ps=$($_.positionStatus)", "psc=$($_.siteId)"
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $sql, ($sqlVars -join ',')) -F DarkCyan
-  #TODO
-  # pause
-  if (!$WhatIf) {
-   New-SqlOperation @params -Query $sql -Parameters $sqlVars
-  }
+  Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
+  if (!$WhatIf) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
   $_
  }
 }
