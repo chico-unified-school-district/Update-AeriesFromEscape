@@ -42,7 +42,7 @@ param (
  [System.Management.Automation.PSCredential]$EscapeCredential,
  # Run a 'Whatif' on commands - no data will be changed
  [Alias('wi')]
-	[switch]$WhatIf
+ [switch]$WhatIf
 )
 
 # Variables ==================================
@@ -147,7 +147,7 @@ function Format-UserObj {
 
 function Get-EmployeeData ($params) {
  $query = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
- $results = New-SqlOperation @params -Query $query
+ $results = New-SqlOperation @params -Query $query  | ConvertTo-CSV | ConvertFrom-Csv
  Write-Host ('{0},{1},Count: {2}' -f $MyInvocation.MyCommand.Name, $EscapeDatabase, @($results).count) -Fore $infoClr
  $results
 }
@@ -156,8 +156,8 @@ function Set-EmployeeTypeData {
  begin {
  }
  process {
-  $code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
-  $typeData = switch ($code) {
+  $_.code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
+  $typeData = switch ($_.code) {
    'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
    'CUTA1P' { @{type = 'Teacher'; UTY = 'adteacher'; U8 = 'T' } }
    'CSEA2R' { @{type = 'Office Staff'; UTY = 'aduser'; U8 = 'C' } }
@@ -168,10 +168,9 @@ function Set-EmployeeTypeData {
    default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'T' } }
   }
   Write-Verbose ('{0},{1},Code: {2}' -f $MyInvocation.MyCommand.Name, $_.empId, $code)
-  $_.code = $code
-  $_.U8 = $typeData.U8
-  $_.UTY = $typeData.UTY
   $_.type = $typeData.type
+  $_.UTY = $typeData.UTY
+  $_.U8 = $typeData.U8
   $_
  }
 }
@@ -201,7 +200,7 @@ function Set-ADData {
  process {
   Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.fn, $_.ln)
   $adParams = @{
-   Filter     = "EmployeeID -eq $($_.empId) -and mail -like '*@*' -and Enabled -eq 'True'"
+   Filter     = "EmployeeID -eq $($_.empId)"
    Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1', 'Description', 'departmentNumber'
   }
   $adObj = Get-Aduser @adParams
