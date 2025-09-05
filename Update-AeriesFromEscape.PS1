@@ -17,32 +17,24 @@ $AeriesQuery = "SELECT * FROM UGN WHERE UTY = `'adteacher`' OR  UTY = `'aduser`'
 #>
 [cmdletbinding()]
 param (
- [Parameter(Mandatory = $True)]
- [Alias('DCs')]
- [string[]]$DomainControllers,
- [Parameter(Mandatory = $True)]
- [Alias('ADCred')]
- [System.Management.Automation.PSCredential]$ADCredential,
- [Parameter(Mandatory = $True)]
- [Alias('OU')]
- [string]$StaffOrgUnit,
+ [Parameter(Mandatory = $True)][Alias('DCs')][string[]]$DomainControllers,
+ [Parameter(Mandatory = $True)][Alias('ADCred')][System.Management.Automation.PSCredential]$ADCredential,
+ [Parameter(Mandatory = $True)][Alias('OU')][string]$StaffOrgUnit,
  # Student Information Server
- [Parameter(Mandatory = $true)]
- [string]$SISServer,
- [Parameter(Mandatory = $true)]
- [string]$SISDatabase,
- [Parameter(Mandatory = $true)]
- [System.Management.Automation.PSCredential]$SISCredential,
+ [Parameter(Mandatory = $true)][string]$SISServer,
+ [Parameter(Mandatory = $true)][string]$SISDatabase,
+ [Parameter(Mandatory = $true)][System.Management.Automation.PSCredential]$SISCredential,
  # Escape Employee Server
- [Parameter(Mandatory = $true)]
- [string]$EscapeServer,
- [Parameter(Mandatory = $true)]
- [string]$EscapeDatabase,
- [Parameter(Mandatory = $true)]
- [System.Management.Automation.PSCredential]$EscapeCredential,
+ [Parameter(Mandatory = $true)][string]$EscapeServer,
+ [Parameter(Mandatory = $true)][string]$EscapeDatabase,
+ [Parameter(Mandatory = $true)][System.Management.Automation.PSCredential]$EscapeCredential,
+ # Intermediate Server
+ [Parameter(Mandatory = $true)][string]$IntServer,
+ [Parameter(Mandatory = $true)][string]$IntDatabase,
+ [Parameter(Mandatory = $true)][System.Management.Automation.PSCredential]$IntCredential,
+ [Parameter(Mandatory = $true)][string]$IntTable,
  # Run a 'Whatif' on commands - no data will be changed
- [Alias('wi')]
- [switch]$WhatIf
+ [Alias('wi')][switch]$WhatIf
 )
 
 # Variables ==================================
@@ -55,7 +47,7 @@ function Add-UGNEntry ($params) {
   VALUES (@sid,@un,@ln,@fn,@em,@uty,(SELECT MAX([UID]) + 1 FROM UGN),'AERIES.NET',1,-1,GETDATE(),GETDATE(),GETDATE() );"
  }
  process {
-  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.emp.empId, $_.ad.SamAccountName) -Fore $actionClr
   # @sid,@un,@ln,@fn,@em,@uty - $_.empId, $_.samid, $_.ln, $_.fn, $_.email, $_.UTY
   $sqlVars = "sid=$($_.empid)", "un=$($_.samid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "uty=$($_.UTY)"
   Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
@@ -66,7 +58,7 @@ function Add-UGNEntry ($params) {
 
 function Add-SSOEntry ($params) {
  process {
-  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.emp.EmpId, $_.ad.SamAccountName) -Fore $actionClr
   $sqlVars = "gem=$($_.gmail)", "uid=$($_.UID)"
   Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $_.sqlSSO, ($sqlVars -join ',')) -F $actionClr
   if (!$WhatIf) { New-SqlOperation @params -Query $_.sqlSSO -Parameters $sqlVars }
@@ -78,7 +70,7 @@ function Add-STFEntry ($params) {
  begin {
   # ID, LN, FN, EM, U8 (Coorespnds to BargUnitID),CP (mobile phone), NP (Notification Preference)
   # NP 0=Do Not Contact, 1=General and Emergency Announcements, 2=Emergency Announcements
-  $sql = "INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP,PS,PSC) VALUES (@id,@ln,@fn,@em,@u8,@cp,1,@ps,@psc)"
+  $sql = 'INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP,PS,PSC) VALUES (@id,@ln,@fn,@em,@u8,@cp,1,@ps,@psc)'
  }
  process {
   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
@@ -95,14 +87,14 @@ function Complete-Processing {
  process {
   $i++
   $msgData = $MyInvocation.MyCommand.Name, $i, $_.code , $_.empId, $_.email, $_.type, $_.UTY, $_.U8, $_.jobDesc
-  Write-host ('{0},{1},{2},{3},{4},{5},{6},{7},{8}' -f $msgData) -Fore $infoClr
+  Write-Host ('{0},{1},{2},{3},{4},{5},{6},{7},{8}' -f $msgData) -Fore $infoClr
   Write-Verbose ($_ | Out-String)
  }
 }
 
 function Get-UID  ($params) {
  begin {
-  $sql = "SELECT TOP 1 UID FROM UGN WHERE SID = @sid"
+  $sql = 'SELECT TOP 1 UID FROM UGN WHERE SID = @sid'
  }
  process {
   Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
@@ -118,6 +110,9 @@ function Get-UID  ($params) {
 function Format-UserObj {
  process {
   New-Object -TypeName PSObject -Property @{
+   ad             = $null
+   emp            = $_
+   int            = $_
    empId          = $_.empId
    siteId         = $_.siteId
    deptNum        = $null
@@ -147,83 +142,9 @@ function Format-UserObj {
 
 function Get-EmployeeData ($params) {
  $query = Get-Content -Path ./sql/escape-aeries-users.sql -Raw
- $results = New-SqlOperation @params -Query $query  | ConvertTo-CSV | ConvertFrom-Csv
+ $results = New-SqlOperation @params -Query $query | ConvertTo-Csv | ConvertFrom-Csv
  Write-Host ('{0},{1},Count: {2}' -f $MyInvocation.MyCommand.Name, $EscapeDatabase, @($results).count) -Fore $infoClr
  $results
-}
-
-function Set-EmployeeTypeData {
- begin {
- }
- process {
-  $_.code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
-  $typeData = switch ($_.code) {
-   'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
-   'CUTA1P' { @{type = 'Teacher'; UTY = 'adteacher'; U8 = 'T' } }
-   'CSEA2R' { @{type = 'Office Staff'; UTY = 'aduser'; U8 = 'C' } }
-   '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
-   '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
-   '6U' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
-   '6' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
-   default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'T' } }
-  }
-  Write-Verbose ('{0},{1},Code: {2}' -f $MyInvocation.MyCommand.Name, $_.empId, $code)
-  $_.type = $typeData.type
-  $_.UTY = $typeData.UTY
-  $_.U8 = $typeData.U8
-  $_
- }
-}
-
-function Set-PositionStatus {
- begin {
- }
- process {
-  $result = switch ($_.empType) {
-   'P' { 1 } # Tenured
-   1 { 2 } # Probationary
-   2 { 2 } # Probationary
-   'B' { 2 } # Probationary
-   'U' { 5 } # Student Teacher
-   default { [System.DBNull]::Value }
-  }
-  $_.positionStatus = $result
-  $_
- }
-}
-
-function Set-ADData {
- begin {
-  $dc = Select-DomainController $DomainControllers
-  New-ADSession -dc $dc -cmdlets 'Get-ADUser' -cred $ADCredential
- }
- process {
-  Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.fn, $_.ln)
-  $adParams = @{
-   Filter     = "EmployeeID -eq $($_.empId)"
-   Properties = 'mail', 'homepage', 'employeeID', 'extensionAttribute1', 'Description', 'departmentNumber'
-  }
-  $adObj = Get-Aduser @adParams
-  if (!$adObj) {
-   $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
-   return (Write-Host ('{0},{1},{2},{3},Employee not found' -f $msg))
-  }
-  # Write-Verbose ($adObj | out-string)
-  $_.deptNum = try { $adObj.departmentNumber[0] } catch {}
-  $_.gmail = $adObj.homepage
-  $_.samid = $adObj.samAccountName
-  $_
- }
-}
-
-function Set-Site {
- process {
-  $siteId = if ($_.siteId -match '\d') { $_.siteId }
-  elseif ($_.deptNum -match '\d') { $_.deptNum }
-  else { [System.DBNull]::Value }
-  $_.siteId = $siteId
-  $_
- }
 }
 
 function Select-MissingUGN  ($params) {
@@ -288,6 +209,129 @@ function Select-SqlSSO ($params) {
  }
 }
 
+function Set-EmployeeTypeData {
+ begin {
+ }
+ process {
+  $_.code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
+  $typeData = switch ($_.code) {
+   'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
+   'CUTA1P' { @{type = 'Teacher'; UTY = 'adteacher'; U8 = 'T' } }
+   'CSEA2R' { @{type = 'Office Staff'; UTY = 'aduser'; U8 = 'C' } }
+   '2S' { @{type = 'Office Sub'; UTY = 'aduser'; U8 = 'C' } }
+   '1S' { @{type = 'Teacher Sub'; UTY = 'adteacher'; U8 = 'T' } }
+   '6U' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
+   '6' { @{type = 'Student Teacher'; UTY = 'adteachersub'; U8 = 'T' } }
+   default { @{type = 'Default'; UTY = 'adteacher'; U8 = 'T' } }
+  }
+  # Write-Verbose ('{0},{1},Code: {2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.code)
+  $_.type = $typeData.type
+  $_.UTY = $typeData.UTY
+  $_.U8 = $typeData.U8
+  $_
+ }
+}
+
+function Set-PositionStatus {
+ begin {
+ }
+ process {
+  $result = switch ($_.empType) {
+   'P' { 1 } # Tenured
+   1 { 2 } # Probationary
+   2 { 2 } # Probationary
+   'B' { 2 } # Probationary
+   'U' { 5 } # Student Teacher
+   default { [System.DBNull]::Value }
+  }
+  $_.positionStatus = $result
+  $_
+ }
+}
+
+function Set-ADData {
+ begin {
+  $dc = Select-DomainController $DomainControllers
+  New-ADSession -DC $dc -Cmdlets 'Get-ADUser' -cred $ADCredential
+ }
+ process {
+  # Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.fn, $_.ln)
+  $adParams = @{
+   Filter     = "EmployeeID -eq $($_.empId)"
+   Properties = 'Mail', 'HomePage', 'EmployeeID', 'extensionAttribute1', 'Description', 'departmentNumber', 'AccountExpirationDate'
+  }
+  $adObj = Get-ADUser @adParams
+  if (!$adObj) {
+   $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
+   return (Write-Host ('{0},{1},{2},{3},Employee not found' -f $msg))
+  }
+  $_.ad = $adObj
+  # Write-Verbose ($adObj | out-string)
+  $_.deptNum = try { $adObj.departmentNumber[0] } catch {}
+  $_.gmail = $adObj.homepage
+  $_.samid = $adObj.samAccountName
+  $_
+ }
+}
+
+function Set-IntData ($params, $table) {
+ begin {
+  $sql = 'SELECT * FROM {0} WHERE EmpId = @id AND dts > DATEADD(day,-60,GETDATE())' -f $table
+ }
+ process {
+  $sqlVars = "id=$($_.empId)"
+  # Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, $sqlVars)
+  $_.int = New-SqlOperation @params -Query $sql -Parameters $sqlVars | ConvertTo-Csv | ConvertFrom-Csv
+  $_
+ }
+}
+
+function Set-Site {
+ process {
+  $siteId = if ($_.siteId -match '\d') { $_.siteId }
+  elseif ($_.deptNum -match '\d') { $_.deptNum }
+  else { [System.DBNull]::Value }
+  $_.siteId = $siteId
+  $_
+ }
+}
+
+function Set-STFSiteID ($params) {
+ begin {
+  $sql = 'UPDATE STF SET PSC = @deptNum WHERE ID = @id'
+ }
+ process {
+  $siteId = if ($_.deptNum) { $_.deptNum }
+  elseif ( $_.int.siteCode -match '\d' ) { $_.int.siteCode }
+  else { 0 }
+  $sqlVars = "deptNum=$siteID", "id=$($_.ad.EmployeeID)"
+  $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, ($sqlVars -join ',')
+  Write-Host ('{0},{1},{2},{3}' -f $msgVars) -F DarkCyan
+  if ($WhatIf) { return $_ }
+  New-SqlOperation @params -Query $sql -Parameters $sqlVars
+  $_
+ }
+}
+
+function Set-UGNExpirationDate ($params, $idList) {
+ begin {
+  $sql = 'UPDATE UGN SET XD = @expireDate WHERE SID = @id'
+ }
+ process {
+  if ($idList -notcontains $_.persId) { return $_ } # Only process specific personTypeIds
+  if ($_.ad.AccountExpirationDate -isnot [datetime]) {
+   Write-Host ('{0},{1},{2},AccountExpirationDate missing' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName)
+   return $_
+  }
+  $sqlVars = "expireDate=$($_.ad.AccountExpirationDate)", "id=$($_.ad.EmployeeID)"
+  $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, ($sqlVars -join ',')
+  Write-Host ('{0},{1},{2},{3}' -f $msgVars) -F DarkBlue
+  if ($WhatIf) { return $_ }
+  New-SqlOperation @params -Query $sql -Parameters $sqlVars
+  $_
+ }
+}
+
 # =========================================================================
 
 Import-Module CommonScriptFunctions
@@ -309,18 +353,27 @@ $sisParams = @{
  Credential = $SISCredential
 }
 
+$intParams = @{
+ Server     = $IntServer
+ Database   = $IntDatabase
+ Credential = $IntCredential
+}
+
 $userObj = Get-EmployeeData $empParams |
  Format-UserObj |
   Set-ADData |
-   Set-Site |
-    Set-PositionStatus |
-     Set-EmployeeTypeData
+   Set-IntData $intParams $IntTable |
+    Set-Site |
+     Set-PositionStatus |
+      Set-EmployeeTypeData
+
+Show-BlockInfo $SISDatabase
 
 Show-BlockInfo 'Insert UGN'
-$userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Complete-Processing
+$userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
 
 Show-BlockInfo 'Insert STF'
-$userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Complete-Processing
+$userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Set-STFSiteID $sisParams | Complete-Processing
 
 Show-BlockInfo 'Insert SSO'
 $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
