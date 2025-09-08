@@ -9,3 +9,5 @@ desktop.ini
 /jenkins.ps1
 /params.ps1
 /sql/test-results.sql
+/sql/get-stf.sql
+/sql/get-emps.sql

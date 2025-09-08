@@ -48,8 +48,8 @@ function Add-UGNEntry ($params) {
  }
  process {
   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.emp.empId, $_.ad.SamAccountName) -Fore $actionClr
-  # @sid,@un,@ln,@fn,@em,@uty - $_.empId, $_.samid, $_.ln, $_.fn, $_.email, $_.UTY
-  $sqlVars = "sid=$($_.empid)", "un=$($_.samid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "uty=$($_.UTY)"
+  # @sid,@un,@ln,@fn,@em,@uty - $_.empId, $_.ad.SamAccountName, $_.ln, $_.fn, $_.email, $_.UTY
+  $sqlVars = "sid=$($_.empid)", "un=$($_.ad.SamAccountName)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "uty=$($_.UTY)"
   Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
   if (!$Whatif) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
   $_
@@ -73,7 +73,7 @@ function Add-STFEntry ($params) {
   $sql = 'INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP,PS,PSC) VALUES (@id,@ln,@fn,@em,@u8,@cp,1,@ps,@psc)'
  }
  process {
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.empId, $_.samid) -Fore $actionClr
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.empId, $_.ad.SamAccountName) -Fore $actionClr
   $sqlVars = "id=$($_.empid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)",
   "u8=$($_.u8)", "cp=$($_.mobile)", "ps=$($_.positionStatus)", "psc=$($_.siteId)"
   Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
@@ -83,9 +83,7 @@ function Add-STFEntry ($params) {
 }
 
 function Complete-Processing {
- begin { $i = 0 }
  process {
-  $i++
   $msgData = $MyInvocation.MyCommand.Name, $i, $_.code , $_.empId, $_.email, $_.type, $_.UTY, $_.U8, $_.jobDesc
   Write-Host ('{0},{1},{2},{3},{4},{5},{6},{7},{8}' -f $msgData) -Fore $infoClr
   Write-Verbose ($_ | Out-String)
@@ -115,10 +113,8 @@ function Format-UserObj {
    int            = $_
    empId          = $_.empId
    siteId         = $_.siteId
-   deptNum        = $null
    email          = $_.emailW
    gmail          = $null
-   samid          = $null
    bargId         = $_.bargId
    code           = $code
    U8             = $null
@@ -127,7 +123,6 @@ function Format-UserObj {
    FN             = $_.fn.replace("'", "''") # Fix single quote
    LN             = $_.ln.replace("'", "''") # Fix single quote
    mobile         = $_.mobile.replace(' ', '')
-   empType        = $_.empType
    empStatus      = $_.empStatus
    jobDesc        = $_.jobDesc
    persId         = $_.persId
@@ -213,7 +208,7 @@ function Set-EmployeeTypeData {
  begin {
  }
  process {
-  $_.code = ([string]$_.bargId + [string]$_.persId + [string]$_.empType).replace(' ', '')
+  $_.code = ([string]$_.bargId + [string]$_.persId + [string]$_.emp.empType).replace(' ', '')
   $typeData = switch ($_.code) {
    'CUMA2R' { @{type = 'Admin'; UTY = 'aduser'; U8 = 'A' } }
    'CUTA1P' { @{type = 'Teacher'; UTY = 'adteacher'; U8 = 'T' } }
@@ -236,7 +231,7 @@ function Set-PositionStatus {
  begin {
  }
  process {
-  $result = switch ($_.empType) {
+  $result = switch ($_.emp.empType) {
    'P' { 1 } # Tenured
    1 { 2 } # Probationary
    2 { 2 } # Probationary
@@ -266,32 +261,33 @@ function Set-ADData {
    return (Write-Host ('{0},{1},{2},{3},Employee not found' -f $msg))
   }
   $_.ad = $adObj
-  # Write-Verbose ($adObj | out-string)
-  $_.deptNum = try { $adObj.departmentNumber[0] } catch {}
   $_.gmail = $adObj.homepage
-  $_.samid = $adObj.samAccountName
+  $_.ad.SamAccountName = $adObj.samAccountName
   $_
  }
 }
 
-function Set-IntData ($params, $table) {
- begin {
-  $sql = 'SELECT * FROM {0} WHERE EmpId = @id AND dts > DATEADD(day,-60,GETDATE())' -f $table
- }
- process {
-  $sqlVars = "id=$($_.empId)"
-  # Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, $sqlVars)
-  $_.int = New-SqlOperation @params -Query $sql -Parameters $sqlVars | ConvertTo-Csv | ConvertFrom-Csv
-  $_
- }
-}
+# function Set-IntData ($params, $table) {
+#  begin {
+#   $sql = 'SELECT * FROM {0} WHERE EmpId = @id AND dts > DATEADD(day,-60,GETDATE())' -f $table
+#  }
+#  process {
+#   $sqlVars = "id=$($_.empId)"
+#   # Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, $sqlVars)
+#   $_.int = New-SqlOperation @params -Query $sql -Parameters $sqlVars | ConvertTo-Csv | ConvertFrom-Csv
+#   $_
+#  }
+# }
 
-function Set-Site {
+function Set-SiteId {
  process {
-  $siteId = if ($_.siteId -match '\d') { $_.siteId }
-  elseif ($_.deptNum -match '\d') { $_.deptNum }
+  $adDept = try { $_.ad.departmentNumber[0] } catch { $null }
+  # zone ref site codes match employee db codes. Sis codes omit the trailing zero
+  $siteId = if ($_.emp.siteId -match '\d') { $_.emp.siteId }
+  elseif ( $_.int.siteCode -match '\d' ) { $_.int.siteCode }
   else { [System.DBNull]::Value }
-  $_.siteId = $siteId
+  $_.siteId = try { [int]$siteId / 10 } catch { $siteId }
+  if ($_.siteId) { Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.siteId) -f Red; Read-Host }
   $_
  }
 }
@@ -301,9 +297,7 @@ function Set-STFSiteID ($params) {
   $sql = 'UPDATE STF SET PSC = @deptNum WHERE ID = @id'
  }
  process {
-  $siteId = if ($_.deptNum) { $_.deptNum }
-  elseif ( $_.int.siteCode -match '\d' ) { $_.int.siteCode }
-  else { 0 }
+  $siteId = if ($_.siteId -match '\d') { $_.siteId } else { 0 }
   $sqlVars = "deptNum=$siteID", "id=$($_.ad.EmployeeID)"
   $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, ($sqlVars -join ',')
   Write-Host ('{0},{1},{2},{3}' -f $msgVars) -F DarkCyan
@@ -363,20 +357,21 @@ $userObj = Get-EmployeeData $empParams |
  Format-UserObj |
   Set-ADData |
    Set-IntData $intParams $IntTable |
-    Set-Site |
-     Set-PositionStatus |
-      Set-EmployeeTypeData
+    Set-SiteId |
+     #   Set-PositionStatus |
+     #    Set-EmployeeTypeData
+     Complete-Processing
 
 Show-BlockInfo $SISDatabase
 
-Show-BlockInfo 'Insert UGN'
-$userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
+# Show-BlockInfo 'Insert UGN'
+# $userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
 
-Show-BlockInfo 'Insert STF'
-$userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Set-STFSiteID $sisParams | Complete-Processing
+# Show-BlockInfo 'Insert STF'
+# $userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Set-STFSiteID $sisParams | Complete-Processing
 
-Show-BlockInfo 'Insert SSO'
-$userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
+# Show-BlockInfo 'Insert SSO'
+# $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
 
 Clear-SessionData
 if ($WhatIf) { Show-TestRun }
