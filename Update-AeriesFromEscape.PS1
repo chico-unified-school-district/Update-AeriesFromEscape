@@ -251,7 +251,7 @@ function Set-ADData {
   $adObj = Get-ADUser @adParams
   if (!$adObj) {
    $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
-   return (Write-Host ('{0},{1},{2},{3},Employee not found' -f $msg))
+   return (Write-Verbose ('{0},{1},{2},{3},Employee not found' -f $msg))
   }
   $_.ad = $adObj
   $_.gmail = $adObj.homepage
