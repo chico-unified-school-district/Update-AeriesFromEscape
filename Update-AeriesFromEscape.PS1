@@ -28,11 +28,6 @@ param (
  [Parameter(Mandatory = $true)][string]$EscapeServer,
  [Parameter(Mandatory = $true)][string]$EscapeDatabase,
  [Parameter(Mandatory = $true)][System.Management.Automation.PSCredential]$EscapeCredential,
- # Intermediate Server
- [Parameter(Mandatory = $true)][string]$IntServer,
- [Parameter(Mandatory = $true)][string]$IntDatabase,
- [Parameter(Mandatory = $true)][System.Management.Automation.PSCredential]$IntCredential,
- [Parameter(Mandatory = $true)][string]$IntTable,
  # Run a 'Whatif' on commands - no data will be changed
  [Alias('wi')][switch]$WhatIf
 )
@@ -84,9 +79,10 @@ function Add-STFEntry ($params) {
 
 function Complete-Processing {
  process {
-  $msgData = $MyInvocation.MyCommand.Name, $i, $_.code , $_.empId, $_.email, $_.type, $_.UTY, $_.U8, $_.jobDesc
-  Write-Host ('{0},{1},{2},{3},{4},{5},{6},{7},{8}' -f $msgData) -Fore $infoClr
+  $msgData = $MyInvocation.MyCommand.Name, $_.empId, $_.code, $_.type, $_.UTY, $_.U8, $_.jobDesc
+  Write-Host ('{0},{1},code:[{2}],type:[{3}],UTY:{4},U8:[{5}],job:[{6}]' -f $msgData) -Fore $infoClr
   Write-Verbose ($_ | Out-String)
+  # Pause
  }
 }
 
@@ -95,7 +91,7 @@ function Get-UID  ($params) {
   $sql = 'SELECT TOP 1 UID FROM UGN WHERE SID = @sid'
  }
  process {
-  Write-Host ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail ) -Fore $infoClr
+  Write-Verbose ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail )
   $sqlVars = "sid=$($_.empId)"
   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $sql, $sqlVars)
   $uid = (New-SqlOperation @params -Query $sql -Parameters $sqlVars).UID
@@ -110,9 +106,8 @@ function Format-UserObj {
   New-Object -TypeName PSObject -Property @{
    ad             = $null
    emp            = $_
-   int            = $_
    empId          = $_.empId
-   siteId         = $_.siteId
+   siteId         = $null
    email          = $_.emailW
    gmail          = $null
    bargId         = $_.bargId
@@ -189,7 +184,7 @@ function Select-SqlSSO ($params) {
   $UID = $_ | Get-UID $params
   if ([int64]$UID -is [int64]) {
    $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.gmail, $UID
-   Write-Host ('{0},{1},{2},UID [{3}]' -f $msgVars)
+   Write-Verbose ('{0},{1},{2},UID [{3}]' -f $msgVars)
    $sqlVars = "uid=$UID"
    if ($UID) { $checkUID = New-SqlOperation @params -Query $ssoSql -Parameters $sqlVars }
    # When UID present in SSO table but GEM is not correct
@@ -228,8 +223,6 @@ function Set-EmployeeTypeData {
 }
 
 function Set-PositionStatus {
- begin {
- }
  process {
   $result = switch ($_.emp.empType) {
    'P' { 1 } # Tenured
@@ -250,10 +243,10 @@ function Set-ADData {
   New-ADSession -DC $dc -Cmdlets 'Get-ADUser' -cred $ADCredential
  }
  process {
-  # Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.fn, $_.ln)
   $adParams = @{
    Filter     = "EmployeeID -eq $($_.empId)"
-   Properties = 'Mail', 'HomePage', 'EmployeeID', 'extensionAttribute1', 'Description', 'departmentNumber', 'AccountExpirationDate'
+   Properties = 'Mail', 'HomePage', 'EmployeeID', 'extensionAttribute1',
+   'Description', 'departmentNumber', 'AccountExpirationDate', 'office'
   }
   $adObj = Get-ADUser @adParams
   if (!$adObj) {
@@ -262,51 +255,24 @@ function Set-ADData {
   }
   $_.ad = $adObj
   $_.gmail = $adObj.homepage
-  $_.ad.SamAccountName = $adObj.samAccountName
+  if (!$_.jobDesc) { $_.jobDesc = $_.ad.Description }
   $_
  }
 }
 
-# function Set-IntData ($params, $table) {
-#  begin {
-#   $sql = 'SELECT * FROM {0} WHERE EmpId = @id AND dts > DATEADD(day,-60,GETDATE())' -f $table
-#  }
-#  process {
-#   $sqlVars = "id=$($_.empId)"
-#   # Write-Verbose ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, $sqlVars)
-#   $_.int = New-SqlOperation @params -Query $sql -Parameters $sqlVars | ConvertTo-Csv | ConvertFrom-Csv
-#   $_
-#  }
-# }
-
-function Set-SiteId {
+function Set-SiSSiteId {
  process {
   $adDept = try { $_.ad.departmentNumber[0] } catch { $null }
-  # zone ref site codes match employee db codes. Sis codes omit the trailing zero
-  $siteId = if ($_.emp.siteId -match '\d') { $_.emp.siteId }
-  elseif ( $_.int.siteCode -match '\d' ) { $_.int.siteCode }
+  $_.siteId = if ( $adDept -match '\d' ) { $adDept }
+  elseif ($_.emp.siteId -match '\d') { $_.emp.siteId }
   else { [System.DBNull]::Value }
-  $_.siteId = try { [int]$siteId / 10 } catch { $siteId }
-  if ($_.siteId) { Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.siteId) -f Red; Read-Host }
+  # Convert Employee DB site id to SiS DB site id
+  if ($_.siteId -match '\d') { $_.siteId = [int]($_.siteId / 10) }
+  # $msg = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName , $_.ad.departmentNumber, $_.emp.siteId, $_.siteId
+  # Write-Host ('{0},{1},ad dept: {2},emp site id: {3},Actual Site ID: {4}' -f $msg) -f Cyan
   $_
  }
 }
-
-function Set-STFSiteID ($params) {
- begin {
-  $sql = 'UPDATE STF SET PSC = @deptNum WHERE ID = @id'
- }
- process {
-  $siteId = if ($_.siteId -match '\d') { $_.siteId } else { 0 }
-  $sqlVars = "deptNum=$siteID", "id=$($_.ad.EmployeeID)"
-  $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, ($sqlVars -join ',')
-  Write-Host ('{0},{1},{2},{3}' -f $msgVars) -F DarkCyan
-  if ($WhatIf) { return $_ }
-  New-SqlOperation @params -Query $sql -Parameters $sqlVars
-  $_
- }
-}
-
 function Set-UGNExpirationDate ($params, $idList) {
  begin {
   $sql = 'UPDATE UGN SET XD = @expireDate WHERE SID = @id'
@@ -325,6 +291,22 @@ function Set-UGNExpirationDate ($params, $idList) {
   $_
  }
 }
+
+function Update-STFSiteID ($params) {
+ begin {
+  $sql = 'UPDATE STF SET PSC = @deptNum WHERE ID = @id'
+ }
+ process {
+  $siteId = if ($_.siteId -match '\d') { $_.siteId } else { 0 } # Zero is the default
+  $sqlVars = "deptNum=$siteID", "id=$($_.ad.EmployeeID)"
+  $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $sql, ($sqlVars -join ',')
+  Write-Host ('{0},{1},{2},{3}' -f $msgVars) -F DarkCyan
+  if ($WhatIf) { return $_ }
+  New-SqlOperation @params -Query $sql -Parameters $sqlVars
+  $_
+ }
+}
+
 
 # =========================================================================
 
@@ -347,31 +329,24 @@ $sisParams = @{
  Credential = $SISCredential
 }
 
-$intParams = @{
- Server     = $IntServer
- Database   = $IntDatabase
- Credential = $IntCredential
-}
-
 $userObj = Get-EmployeeData $empParams |
  Format-UserObj |
   Set-ADData |
-   Set-IntData $intParams $IntTable |
-    Set-SiteId |
-     #   Set-PositionStatus |
-     #    Set-EmployeeTypeData
-     Complete-Processing
+   Set-SiSSiteId |
+    Set-PositionStatus |
+     Set-EmployeeTypeData
+# Complete-Processing
 
 Show-BlockInfo $SISDatabase
 
-# Show-BlockInfo 'Insert UGN'
-# $userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
+Show-BlockInfo 'Insert UGN'
+$userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
 
-# Show-BlockInfo 'Insert STF'
-# $userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Set-STFSiteID $sisParams | Complete-Processing
+Show-BlockInfo 'Insert STF'
+$userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
 
-# Show-BlockInfo 'Insert SSO'
-# $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
+Show-BlockInfo 'Insert SSO'
+$userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
 
 Clear-SessionData
 if ($WhatIf) { Show-TestRun }
