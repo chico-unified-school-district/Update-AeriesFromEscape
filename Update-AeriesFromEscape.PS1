@@ -267,12 +267,11 @@ function Set-SiSSiteId {
   elseif ($_.emp.siteId -match '\d') { $_.emp.siteId }
   else { [System.DBNull]::Value }
   # Convert Employee DB site id to SiS DB site id
-  if ($_.siteId -match '\d') { $_.siteId = [int]($_.siteId / 10) }
-  # $msg = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName , $_.ad.departmentNumber, $_.emp.siteId, $_.siteId
-  # Write-Host ('{0},{1},ad dept: {2},emp site id: {3},Actual Site ID: {4}' -f $msg) -f Cyan
+  if ($_.siteId -match '\d' -and $_.siteId -lt 300) { $_.siteId = [int]($_.siteId / 10) }
   $_
  }
 }
+
 function Set-UGNExpirationDate ($params, $idList) {
  begin {
   $sql = 'UPDATE UGN SET XD = @expireDate WHERE SID = @id'
