@@ -302,7 +302,6 @@ function Update-STFSiteID ($params) {
  }
 }
 
-
 # =========================================================================
 
 Import-Module CommonScriptFunctions
@@ -323,9 +322,9 @@ $sisParams = @{
  Database   = $SISDatabase
  Credential = $SISCredential
 }
+
 $cmdlets = 'Get-ADUser', 'Set-ADUser'
 Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdlets -Credential $ADCredential
-Clear-SessionData
 
 $userObj = Get-EmployeeData $empParams |
  Format-UserObj |
