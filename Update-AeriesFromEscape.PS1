@@ -238,10 +238,6 @@ function Set-PositionStatus {
 }
 
 function Set-ADData {
- begin {
-  $dc = Select-DomainController $DomainControllers
-  New-ADSession -DC $dc -Cmdlets 'Get-ADUser' -cred $ADCredential
- }
  process {
   $adParams = @{
    Filter     = "EmployeeID -eq $($_.empId)"
@@ -327,6 +323,9 @@ $sisParams = @{
  Database   = $SISDatabase
  Credential = $SISCredential
 }
+
+Connect-ADSession -DomainControllers $DomainControllers -Cmdlets Get-ADUser, Set-ADUser -Credential $ADCredential
+Clear-SessionData
 
 $userObj = Get-EmployeeData $empParams |
  Format-UserObj |
