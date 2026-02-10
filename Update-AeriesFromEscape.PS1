@@ -323,8 +323,8 @@ $sisParams = @{
  Database   = $SISDatabase
  Credential = $SISCredential
 }
-
-Connect-ADSession -DomainControllers $DomainControllers -Cmdlets Get-ADUser, Set-ADUser -Credential $ADCredential
+$cmdlets = 'Get-ADUser', 'Set-ADUser'
+Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdlets -Credential $ADCredential
 Clear-SessionData
 
 $userObj = Get-EmployeeData $empParams |
