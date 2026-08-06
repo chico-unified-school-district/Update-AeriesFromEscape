@@ -346,14 +346,14 @@ $userObj = Get-EmployeeData $empParams |
 Show-BlockInfo $SISDatabase
 
 Show-BlockInfo 'Insert UGN'
-# $userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
+$userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
 
 Show-BlockInfo 'Insert STF'
 # $userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
 $userObj | Set-STFOperation $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
 
 Show-BlockInfo 'Insert SSO'
-# $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
+$userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
 
 Clear-SessionData
 if ($WhatIf) { Show-TestRun }
