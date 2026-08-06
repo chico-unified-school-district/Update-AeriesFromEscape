@@ -161,19 +161,6 @@ function Select-MissingSSO ($params) {
  }
 }
 
-function Select-MissingSTF ($params) {
- begin {
-  $sisSTFData = New-SqlOperation @params -Query 'SELECT ID FROM STF;'
- }
- process {
-  # Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.empId ) -Fore $infoClr
-  if ($sisSTFData.ID -notcontains $_.empId) {
-   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
-   $_
-  }
- }
-}
-
 function Select-SqlSSO ($params) {
  begin {
   $updateSSO = 'UPDATE SSO SET GEM = @gem WHERE UID = @uid'
@@ -287,6 +274,19 @@ function Set-UGNExpirationDate ($params, $idList) {
  }
 }
 
+function Skip-ExistingSTFEntry ($params) {
+ begin {
+  $sisSTFData = New-SqlOperation @params -Query 'SELECT ID,EM,NID FROM STF;'
+ }
+ process {
+  $id = $_.empId
+  $entry = $sisSTFData.Where({ ([int]$_.id -eq $id) -and ($_.em -eq $_.email) -and ($_.nid -eq $_.gmail) })
+  if ($entry) { return }
+  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+  $_
+ }
+}
+
 function Update-STFSiteID ($params) {
  begin {
   $sql = 'UPDATE STF SET PSC = @deptNum WHERE ID = @id'
@@ -337,13 +337,14 @@ $userObj = Get-EmployeeData $empParams |
 Show-BlockInfo $SISDatabase
 
 Show-BlockInfo 'Insert UGN'
-$userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
+# $userObj | Select-MissingUGN $sisParams | Add-UGNEntry $sisParams | Set-UGNExpirationDate $sisParams 6 | Complete-Processing
 
 Show-BlockInfo 'Insert STF'
-$userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
+# $userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
+$userObj | Skip-ExistingSTFEntry $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
 
 Show-BlockInfo 'Insert SSO'
-$userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
+# $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
 
 Clear-SessionData
 if ($WhatIf) { Show-TestRun }
