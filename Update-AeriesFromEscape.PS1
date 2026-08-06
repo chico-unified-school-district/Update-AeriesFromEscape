@@ -66,7 +66,7 @@ function Add-STFEntry ($params) {
   # ID, LN, FN, EM, U8 (Coorespnds to BargUnitID),CP (mobile phone), NP (Notification Preference)
   # NP 0=Do Not Contact, 1=General and Emergency Announcements, 2=Emergency Announcements
   $sqlInsert = 'INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP,PS,PSC) VALUES (@id,@ln,@fn,@em,@u8,@cp,1,@ps,@psc)'
-  $sqlUpdate = 'UDPATE STF SET EM = @em, NID = @gmail WHERE ID = @id'
+  $sqlUpdate = 'UPDATE STF SET EM = @em, NID = @gmail WHERE ID = @id'
  }
  process {
   if ($_.stfOperation -eq 'skip') { return }
