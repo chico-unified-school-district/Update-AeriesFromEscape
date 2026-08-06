@@ -65,12 +65,18 @@ function Add-STFEntry ($params) {
  begin {
   # ID, LN, FN, EM, U8 (Coorespnds to BargUnitID),CP (mobile phone), NP (Notification Preference)
   # NP 0=Do Not Contact, 1=General and Emergency Announcements, 2=Emergency Announcements
-  $sql = 'INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP,PS,PSC) VALUES (@id,@ln,@fn,@em,@u8,@cp,1,@ps,@psc)'
+  $sqlInsert = 'INSERT INTO STF (ID,LN,FN,EM,U8,CP,NP,PS,PSC) VALUES (@id,@ln,@fn,@em,@u8,@cp,1,@ps,@psc)'
+  $sqlUpdate = 'UDPATE STF SET EM = @em, NID = @gmail WHERE ID = @id'
  }
  process {
+  if ($_.stfOperation -eq 'skip') { return }
+  $sql = if ($_.stfOperation -eq 'insert') { $sqlInsert } else { $sqlUpdate }
+  $sqlVars = if ($_.stfOperation -eq 'insert') {
+   "id=$($_.empid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)",
+   "u8=$($_.u8)", "cp=$($_.mobile)", "ps=$($_.positionStatus)", "psc=$($_.siteId)"
+  }
+  else { "id=$($_.empId)", "em=$($_.email)", "gmail=$($_.gmail)" }
   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.empId, $_.ad.SamAccountName) -Fore $actionClr
-  $sqlVars = "id=$($_.empid)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)",
-  "u8=$($_.u8)", "cp=$($_.mobile)", "ps=$($_.positionStatus)", "psc=$($_.siteId)"
   Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
   if (!$WhatIf) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
   $_
@@ -125,6 +131,7 @@ function Format-UserObj {
    type           = $null
    dts            = $_.dts
    sqlSSO         = $null
+   stfOperation   = $null
    UID            = $null
   }
  }
@@ -274,14 +281,16 @@ function Set-UGNExpirationDate ($params, $idList) {
  }
 }
 
-function Skip-ExistingSTFEntry ($params) {
+function Set-STFOperation ($params) {
  begin {
   $sisSTFData = New-SqlOperation @params -Query 'SELECT ID,EM,NID FROM STF;'
  }
  process {
   $id = $_.empId
-  $entry = $sisSTFData.Where({ ([int]$_.id -eq $id) -and ($_.em -eq $_.email) -and ($_.nid -eq $_.gmail) })
-  if ($entry) { return }
+  $entry = $sisSTFData.Where({ [int]$_.id -eq $id })
+  $_.stfOperation = if ($entry.EM -eq $_.email -and $entry.NID -eq $_.gmail) { 'skip' }
+  elseif (!$entry) { 'insert' }
+  else { 'update' } # 'update' only used for debugging reference
   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
   $_
  }
@@ -341,7 +350,7 @@ Show-BlockInfo 'Insert UGN'
 
 Show-BlockInfo 'Insert STF'
 # $userObj | Select-MissingSTF $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
-$userObj | Skip-ExistingSTFEntry $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
+$userObj | Set-STFOperation $sisParams | Add-STFEntry $sisParams | Update-STFSiteID $sisParams | Complete-Processing
 
 Show-BlockInfo 'Insert SSO'
 # $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
