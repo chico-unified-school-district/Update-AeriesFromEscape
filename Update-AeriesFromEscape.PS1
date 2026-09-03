@@ -269,7 +269,7 @@ function Set-UGNExpirationDate ($params, $idList) {
  process {
   if ($idList -notcontains $_.persId) { return $_ } # Only process specific personTypeIds
   if ($_.ad.AccountExpirationDate -isnot [datetime]) {
-   Write-Host ('{0},{1},{2},AccountExpirationDate missing' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName)
+   Write-Host ('{0},{1},AccountExpirationDate missing' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName)
    return $_
   }
   $sqlVars = "expireDate=$($_.ad.AccountExpirationDate)", "id=$($_.ad.EmployeeID)"
