@@ -5,7 +5,7 @@ Add Relevant Employees to Aeries from Escape
 This Script Queries the Escape database for Employees that fit the criteria ('CUTA','CUMA',or 'CSEA' members) for Aeries access
 and adds them to the Aeries UNG table in the format: Domain\Username
 .EXAMPLE
-Update-AeriesFromEscape.PS1 -DC $dc -ADCred $adCred -OU 'OU=Employees,OU=Users,DC=OurDistrict,DC=org' -SISServer SISServer -SISData SISDB -SISCred $SISCred `
+Update-AeriesFromEscape.PS1 -ADCred $adCred -OU 'OU=Employees,OU=Users,DC=OurDistrict,DC=org' -SISServer SISServer -SISData SISDB -SISCred $SISCred `
  -EscapeServer EscServer -EscapeData EscDB -EscapeCred $EscapeCred
 .INPUTS
 .OUTPUTS
@@ -17,7 +17,6 @@ $AeriesQuery = "SELECT * FROM UGN WHERE UTY = `'adteacher`' OR  UTY = `'aduser`'
 #>
 [cmdletbinding()]
 param (
- [Parameter(Mandatory = $True)][Alias('DCs')][string[]]$DomainControllers,
  [Parameter(Mandatory = $True)][Alias('ADCred')][System.Management.Automation.PSCredential]$ADCredential,
  [Parameter(Mandatory = $True)][Alias('OU')][string]$StaffOrgUnit,
  # Student Information Server
@@ -231,14 +230,15 @@ function Set-PositionStatus {
  }
 }
 
-function Set-ADData {
+function Set-ADData ([pscredential]$cred) {
  process {
-  $adParams = @{
+  $params = @{
    Filter     = "EmployeeID -eq $($_.empId)"
    Properties = 'Mail', 'HomePage', 'EmployeeID', 'extensionAttribute1',
    'Description', 'departmentNumber', 'AccountExpirationDate', 'office'
+   Credential = $cred
   }
-  $adObj = Get-ADUser @adParams
+  $adObj = Get-ADUser @params
   if (!$adObj) {
    $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
    return (Write-Verbose ('{0},{1},{2},{3},Employee not found' -f $msg))
@@ -312,11 +312,13 @@ function Update-STFSiteID ($params) {
 }
 
 # =========================================================================
-
+Show-BlockInfo Start
 Import-Module CommonScriptFunctions
 Import-Module -Name dbatools -Cmdlet Invoke-DbaQuery, Set-DbatoolsConfig
 
-Clear-SessionData
+$cmdlets = 'Get-ADUser', 'Set-ADUser'
+Import-Module -Name ActiveDirectory -Cmdlet $cmdlets -WarningAction SilentlyContinue -ErrorAction Stop
+
 if ($WhatIf) { Show-TestRun }
 Show-BlockInfo Main
 
@@ -332,12 +334,10 @@ $sisParams = @{
  Credential = $SISCredential
 }
 
-$cmdlets = 'Get-ADUser', 'Set-ADUser'
-Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdlets -Credential $ADCredential
 
 $userObj = Get-EmployeeData $empParams |
  Format-UserObj |
-  Set-ADData |
+  Set-ADData -cred $ADCredential |
    Set-SiSSiteId |
     Set-PositionStatus |
      Set-EmployeeTypeData
@@ -355,5 +355,4 @@ $userObj | Set-STFOperation $sisParams | Add-STFEntry $sisParams | Update-STFSit
 Show-BlockInfo 'Insert SSO'
 $userObj | Select-MissingSSO $sisParams | Select-SqlSSO $sisParams | Add-SSOEntry $sisParams | Complete-Processing
 
-Clear-SessionData
 if ($WhatIf) { Show-TestRun }
