@@ -35,21 +35,6 @@ param (
 $infoClr = 'Green'
 $actionClr = 'DarkCyan'
 # ============================================
-function Add-UGNEntry ($params) {
- begin {
-  $sql = "INSERT INTO UGN (SID,UN,LN,FN,EM,UTY,[UID],SY,TY,HT,CD,CDT,PLC)
-  VALUES (@sid,@un,@ln,@fn,@em,@uty,(SELECT MAX([UID]) + 1 FROM UGN),'AERIES.NET',1,-1,GETDATE(),GETDATE(),GETDATE() );"
- }
- process {
-  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.emp.empId, $_.ad.SamAccountName) -Fore $actionClr
-  # @sid,@un,@ln,@fn,@em,@uty - $_.empId, $_.ad.SamAccountName, $_.ln, $_.fn, $_.email, $_.UTY
-  $sqlVars = "sid=$($_.empid)", "un=$($_.ad.SamAccountName)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "uty=$($_.UTY)"
-  Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
-  if (!$Whatif) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
-  $_
- }
-}
-
 function Add-SSOEntry ($params) {
  process {
   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.emp.EmpId, $_.ad.SamAccountName) -Fore $actionClr
@@ -82,27 +67,27 @@ function Add-STFEntry ($params) {
  }
 }
 
+function Add-UGNEntry ($params) {
+ begin {
+  $sql = "INSERT INTO UGN (SID,UN,LN,FN,EM,UTY,[UID],SY,TY,HT,CD,CDT,PLC)
+  VALUES (@sid,@un,@ln,@fn,@em,@uty,(SELECT MAX([UID]) + 1 FROM UGN),'AERIES.NET',1,-1,GETDATE(),GETDATE(),GETDATE() );"
+ }
+ process {
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.name, $_.emp.empId, $_.ad.SamAccountName) -Fore $actionClr
+  # @sid,@un,@ln,@fn,@em,@uty - $_.empId, $_.ad.SamAccountName, $_.ln, $_.fn, $_.email, $_.UTY
+  $sqlVars = "sid=$($_.empid)", "un=$($_.ad.SamAccountName)", "ln=$($_.ln)", "fn=$($_.fn)", "em=$($_.email)", "uty=$($_.UTY)"
+  Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.name, $params.Database, $sql, ($sqlVars -join ',')) -F $actionClr
+  if (!$Whatif) { New-SqlOperation @params -Query $sql -Parameters $sqlVars }
+  $_
+ }
+}
+
 function Complete-Processing {
  process {
   $msgData = $MyInvocation.MyCommand.Name, $_.empId, $_.code, $_.type, $_.UTY, $_.U8, $_.jobDesc
   Write-Host ('{0},{1},code:[{2}],type:[{3}],UTY:{4},U8:[{5}],job:[{6}]' -f $msgData) -Fore $infoClr
   Write-Verbose ($_ | Out-String)
   # Pause
- }
-}
-
-function Get-UID  ($params) {
- begin {
-  $sql = 'SELECT TOP 1 UID FROM UGN WHERE SID = @sid'
- }
- process {
-  Write-Verbose ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail )
-  $sqlVars = "sid=$($_.empId)"
-  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $sql, $sqlVars)
-  $uid = (New-SqlOperation @params -Query $sql -Parameters $sqlVars).UID
-  if (!$uid -and $WhatIf) { $uid = 99999999 }
-  if ([int64]$uid -is [int64]) { $uid; return }
-  Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
  }
 }
 
@@ -143,15 +128,18 @@ function Get-EmployeeData ($params) {
  $results
 }
 
-function Select-MissingUGN  ($params) {
+function Get-UID  ($params) {
  begin {
-  $sisUGNData = New-SqlOperation @params -Query 'SELECT SID FROM UGN;'
+  $sql = 'SELECT TOP 1 UID FROM UGN WHERE SID = @sid'
  }
  process {
-  if ($sisUGNData.SID -notcontains $_.empId) {
-   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
-   $_
-  }
+  Write-Verbose ( '{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail )
+  $sqlVars = "sid=$($_.empId)"
+  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $sql, $sqlVars)
+  $uid = (New-SqlOperation @params -Query $sql -Parameters $sqlVars).UID
+  if (!$uid -and $WhatIf) { $uid = 99999999 }
+  if ([int64]$uid -is [int64]) { $uid; return }
+  Write-Warning ('{0},{1},{2},UID not found' -f $MyInvocation.MyCommand.name, $_.empId, $_.gmail)
  }
 }
 
@@ -164,6 +152,18 @@ function Select-MissingSSO ($params) {
   if ($sisSSOData.GEM -contains $_.gmail) { return }
   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.gmail)
   $_
+ }
+}
+
+function Select-MissingUGN  ($params) {
+ begin {
+  $sisUGNData = New-SqlOperation @params -Query 'SELECT SID FROM UGN;'
+ }
+ process {
+  if ($sisUGNData.SID -notcontains $_.empId) {
+   Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
+   $_
+  }
  }
 }
 
@@ -189,6 +189,26 @@ function Select-SqlSSO ($params) {
    $_.sqlSSO = $sql
    $_
   }
+ }
+}
+
+function Set-ADData ([pscredential]$cred) {
+ process {
+  $params = @{
+   Filter     = "EmployeeID -eq $($_.empId)"
+   Properties = 'Mail', 'HomePage', 'EmployeeID', 'extensionAttribute1',
+   'Description', 'departmentNumber', 'AccountExpirationDate', 'office'
+   Credential = $cred
+  }
+  $adObj = Get-ADUser @params
+  if (!$adObj) {
+   $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
+   return (Write-Verbose ('{0},{1},{2},{3},Employee not found' -f $msg))
+  }
+  $_.ad = $adObj
+  $_.gmail = $adObj.homepage
+  if (!$_.jobDesc) { $_.jobDesc = $_.ad.Description }
+  $_
  }
 }
 
@@ -230,26 +250,6 @@ function Set-PositionStatus {
  }
 }
 
-function Set-ADData ([pscredential]$cred) {
- process {
-  $params = @{
-   Filter     = "EmployeeID -eq $($_.empId)"
-   Properties = 'Mail', 'HomePage', 'EmployeeID', 'extensionAttribute1',
-   'Description', 'departmentNumber', 'AccountExpirationDate', 'office'
-   Credential = $cred
-  }
-  $adObj = Get-ADUser @params
-  if (!$adObj) {
-   $msg = $MyInvocation.MyCommand.Name , $_.empId, $_.fn, $_.ln
-   return (Write-Verbose ('{0},{1},{2},{3},Employee not found' -f $msg))
-  }
-  $_.ad = $adObj
-  $_.gmail = $adObj.homepage
-  if (!$_.jobDesc) { $_.jobDesc = $_.ad.Description }
-  $_
- }
-}
-
 function Set-SiSSiteId {
  process {
   $adDept = try { $_.ad.departmentNumber[0] } catch { $null }
@@ -258,6 +258,21 @@ function Set-SiSSiteId {
   else { [System.DBNull]::Value }
   # Convert Employee DB site id to SiS DB site id
   if ($_.siteId -match '\d' -and $_.siteId -lt 300) { $_.siteId = [int]($_.siteId / 10) }
+  $_
+ }
+}
+
+function Set-STFOperation ($params) {
+ begin {
+  $sisSTFData = New-SqlOperation @params -Query 'SELECT ID,EM,NID FROM STF;'
+ }
+ process {
+  $id = $_.empId
+  $entry = $sisSTFData.Where({ [int]$_.id -eq $id })
+  $_.stfOperation = if ($entry.EM -eq $_.email -and $entry.NID -eq $_.gmail) { 'skip' }
+  elseif (!$entry) { 'insert' }
+  else { 'update' } # 'update' only used for debugging reference
+  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
   $_
  }
 }
@@ -277,21 +292,6 @@ function Set-UGNExpirationDate ($params, $idList) {
   Write-Host ('{0},{1},{2},{3}' -f $msgVars) -F DarkBlue
   if ($WhatIf) { return $_ }
   New-SqlOperation @params -Query $sql -Parameters $sqlVars
-  $_
- }
-}
-
-function Set-STFOperation ($params) {
- begin {
-  $sisSTFData = New-SqlOperation @params -Query 'SELECT ID,EM,NID FROM STF;'
- }
- process {
-  $id = $_.empId
-  $entry = $sisSTFData.Where({ [int]$_.id -eq $id })
-  $_.stfOperation = if ($entry.EM -eq $_.email -and $entry.NID -eq $_.gmail) { 'skip' }
-  elseif (!$entry) { 'insert' }
-  else { 'update' } # 'update' only used for debugging reference
-  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.email)
   $_
  }
 }
